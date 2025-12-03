@@ -1,0 +1,69 @@
+plugins {
+    id 'com.android.application'
+    id 'kotlin-android'
+    id 'dev.flutter.flutter-gradle-plugin'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace 'com.smartfind.smartfind_ui_perplexity'
+    compileSdk 36
+    ndkVersion '26.1.10909125'
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    defaultConfig {
+        applicationId 'com.smartfind.smartfind_ui_perplexity'
+        minSdkVersion flutter.minSdkVersion
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
+
+        python {
+            version '3.8'
+            buildPython '/usr/bin/python3'
+
+            pip {
+                install 'requests==2.28.1'
+                install 'chardet==5.0.0'
+                install 'jsonlines==3.1.0'
+                install 'python-docx==0.8.11'
+                install 'PyPDF2==2.12.1'
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    sourceSets {
+        main {
+            python.srcDir 'src/main/python'
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    // Add any additional dependencies here if needed
+}

@@ -1,0 +1,41 @@
+name: smartfind_ui_perplexity
+description: "AI-powered file organization and search application."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  provider: ^6.0.0
+
+  # UI Components
+  cupertino_icons: ^1.0.2
+
+  # Permissions
+  permission_handler: ^11.4.0
+
+  # File access
+  open_file: ^3.3.2
+  path_provider: ^2.1.0
+
+  # HTTP requests (for remote API calls if needed)
+  http: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/classifier_model.pkl
+
