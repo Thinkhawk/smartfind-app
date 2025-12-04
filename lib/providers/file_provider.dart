@@ -5,12 +5,13 @@ import '../models/document_model.dart';
 import '../services/native_file_service.dart';
 import '../services/file_access_logger.dart';
 import '../services/ml_service.dart';
+import '../services/ocr_service.dart';
 
-/// FileProvider - Manages document scanning, access, and search training
 class FileProvider with ChangeNotifier {
   final NativeFileService _fileService = NativeFileService();
   final FileAccessLogger _logger = FileAccessLogger();
   final MLService _mlService = MLService();
+  final OcrService _ocrService = OcrService();
 
   List<DocumentModel> _documents = [];
   bool _isLoading = false;
@@ -22,13 +23,11 @@ class FileProvider with ChangeNotifier {
   bool get hasPermission => _hasPermission;
   String? get errorMessage => _errorMessage;
 
-  /// Initialize provider
   Future<void> initialize() async {
     await _logger.initialize();
     await checkPermissions();
   }
 
-  /// Check storage permissions
   Future<void> checkPermissions() async {
     try {
       final status = await Permission.manageExternalStorage.status;
@@ -41,7 +40,6 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Request storage permission
   Future<bool> requestPermission() async {
     try {
       final status = await Permission.manageExternalStorage.request();
@@ -65,18 +63,17 @@ class FileProvider with ChangeNotifier {
     }
 
     _isLoading = true;
-    _errorMessage = null;
     notifyListeners();
 
     try {
-      // 1. Scan files from device
+      // 1. Scan files
       _documents = await _fileService.scanDocuments();
       _errorMessage = null;
 
-      // 2. Train Search Index on these specific files
-      // This allows the app to learn keywords like "Python" or "Flink"
-      // directly from the user's documents.
-      await _trainSearchModel();
+      // 2. Extract Content & Train
+      // We extract content here and pass it directly to training
+      // so we don't lose the OCR results.
+      await _processAndTrain();
 
     } catch (e) {
       _errorMessage = 'Error loading documents: $e';
@@ -87,47 +84,61 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Helper: Reads all files and sends content to Python for indexing
-  Future<void> _trainSearchModel() async {
+  Future<void> _processAndTrain() async {
     final Map<String, String> corpus = {};
+    print("DEBUG: Extracting content for ${documents.length} files...");
 
-    print("DEBUG: Preparing to train search index...");
-
-    // Read content for each document
     for (final doc in _documents) {
       try {
-        final content = await _mlService.readFile(doc.path);
+        String? content;
+
+        // CHECK FILE TYPE
+        if (_isImage(doc.type)) {
+          // Use Flutter OCR for Images
+          content = await _ocrService.extractText(doc.path);
+        } else {
+          // Use Python for PDF/Docs
+          content = await _mlService.readFile(doc.path);
+        }
+
         if (content != null && content.isNotEmpty) {
-          corpus[doc.path] = content;
+          // --- CHANGE HERE ---
+          // Inject "keywords" about the file itself.
+          // If it's a png, we add words like "image picture png" to the content.
+          String metaTags = "${doc.name} ${doc.type}";
+
+          if (_isImage(doc.type)) {
+            metaTags += " image picture photo";
+          } else if (doc.type == 'pdf' || doc.type == 'docx') {
+            metaTags += " document paper file";
+          }
+
+          // Combine metadata + real content
+          corpus[doc.path] = "$metaTags \n $content";
         }
       } catch (e) {
-        print("DEBUG: Failed to read ${doc.path} for training: $e");
+        print("DEBUG: Failed to process ${doc.path}: $e");
       }
     }
 
-    // Send to Python if we have data
     if (corpus.isNotEmpty) {
-      print("DEBUG: Starting bulk training for search with ${corpus.length} documents...");
       await _mlService.trainSearchIndex(corpus);
-    } else {
-      print("DEBUG: No content available to train search index.");
     }
   }
 
-  /// Open document with default app
+  bool _isImage(String extension) {
+    return ['jpg', 'jpeg', 'png', 'bmp', 'tiff'].contains(extension.toLowerCase());
+  }
+
   Future<void> openDocument(DocumentModel document) async {
     try {
-      // Log access for recommendations
       await _logger.logAccess(document);
-
-      // Open file
       await OpenFile.open(document.path);
     } catch (e) {
       print('Error opening document: $e');
     }
   }
 
-  /// Get document by path
   DocumentModel? getDocumentByPath(String path) {
     try {
       return _documents.firstWhere((doc) => doc.path == path);
@@ -136,13 +147,17 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Refresh document list
   Future<void> refresh() async {
     await loadDocuments();
   }
 
-  /// Get access log path for training
   Future<String> getAccessLogPath() async {
     return await _logger.getLogPath();
+  }
+
+  @override
+  void dispose() {
+    _ocrService.dispose();
+    super.dispose();
   }
 }

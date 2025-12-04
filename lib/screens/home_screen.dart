@@ -171,82 +171,21 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Build permission request UI
   Widget _buildPermissionRequest() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.folder_open,
-              size: 80,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Storage Permission Required',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'SmartFind needs access to your files to organize and search documents.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: _requestPermission,
-              icon: const Icon(Icons.security),
-              label: const Text('Grant Permission'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.folder_open, size: 80, color: Colors.grey),
+          const SizedBox(height: 24),
+          const Text('Permission Required', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          ElevatedButton(onPressed: _requestPermission, child: const Text('Grant')),
+        ],
       ),
     );
   }
 
   /// Build error UI
   Widget _buildError(String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              size: 80,
-              color: Colors.red,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Error',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => _initializeApp(),
-              child: const Text('Retry'),
-            ),
-          ],
-        ),
-      ),
-    );
+    return Center(child: Text(message));
   }
 
   /// Build main content
@@ -306,9 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           )
               : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: true,
         ),
       ),
@@ -323,12 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const Icon(Icons.folder, color: Colors.blue),
           const SizedBox(width: 8),
-          Text(
-            'Categories',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text('Categories', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -341,9 +273,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final fileProvider = context.read<FileProvider>();
-    final resultDocs = fileProvider.documents
-        .where((doc) => searchProvider.searchResultPaths.contains(doc.path))
-        .toList();
+
+    // --- DEBUGGING LOGIC ---
+    // Normalize paths by trimming to ensure matches
+    final resultPaths = searchProvider.searchResultPaths.map((p) => p.trim()).toSet();
+
+    if (resultPaths.isNotEmpty) {
+      print("DEBUG: UI received ${resultPaths.length} matches from Python.");
+      // Print first match for verification
+      print("DEBUG: Sample match: ${resultPaths.first}");
+    }
+
+    final resultDocs = fileProvider.documents.where((doc) {
+      final normalizedPath = doc.path.trim();
+      final isMatch = resultPaths.contains(normalizedPath);
+      return isMatch;
+    }).toList();
+    // -----------------------
 
     if (resultDocs.isEmpty) {
       return Center(
@@ -352,15 +298,16 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            Text(
-              'No results found',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Try different keywords',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
+            Text('No results found', style: Theme.of(context).textTheme.titleMedium),
+            if (searchProvider.searchResultPaths.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  "Debug: Python found ${searchProvider.searchResultPaths.length} files, but UI failed to match paths.\nTry restarting the app.",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                ),
+              ),
           ],
         ),
       );

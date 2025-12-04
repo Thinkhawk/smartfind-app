@@ -28,6 +28,8 @@ dependencies:
   # HTTP requests (for remote API calls if needed)
   http: ^1.1.0
 
+  google_mlkit_text_recognition: ^0.13.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
