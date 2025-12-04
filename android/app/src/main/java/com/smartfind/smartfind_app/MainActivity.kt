@@ -1,4 +1,4 @@
-package com.smartfind.smartfind_ui_perplexity
+package com.smartfind.smartfind_app
 
 import android.content.Intent
 import android.net.Uri
@@ -9,6 +9,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import com.chaquo.python.Python
+import com.chaquo.python.PyObject
 import com.chaquo.python.android.AndroidPlatform
 import java.io.File
 
@@ -24,7 +25,7 @@ class MainActivity: FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         initializePython()
-        copyModelFromAssets()
+        copyModelsFromAssets()
         setupMLChannel(flutterEngine)
         setupPermissionsChannel(flutterEngine)
     }
@@ -49,6 +50,7 @@ class MainActivity: FlutterActivity() {
                         "addToIndex" -> handleAddToIndex(call.arguments as Map<*, *>, result)
                         "getRecommendations" -> handleGetRecommendations(call.arguments as Map<*, *>, result)
                         "trainRecommender" -> handleTrainRecommender(call.arguments as Map<*, *>, result)
+                        "trainSearchIndex" -> handleTrainSearchIndex(call.arguments as Map<*, *>, result)
                         else -> result.notImplemented()
                     }
                 } catch (e: Exception) {
@@ -69,17 +71,61 @@ class MainActivity: FlutterActivity() {
             }
     }
 
+    private fun handleTrainSearchIndex(args: Map<*, *>, result: MethodChannel.Result) {
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val files = args["files"] as? Map<String, String> ?: emptyMap<String, String>()
+
+            val dataDir = applicationContext.filesDir.absolutePath
+            val module = python.getModule("search_engine")
+
+            // FIX: Convert Map to JSON String manually to avoid Chaquopy type issues
+            // Using standard org.json library which is always available in Android
+            val jsonObject = org.json.JSONObject(files)
+            val jsonString = jsonObject.toString()
+
+            // Run training on background thread
+            Thread {
+                try {
+                    // Pass the JSON string instead of the Map
+                    val pyResult = module.callAttr("train_local_index", dataDir, jsonString)
+                    runOnUiThread {
+                        val status = pyResult?.callAttr("get", "status")?.toString()
+                        result.success(status)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in python training", e)
+                    runOnUiThread {
+                        result.error("PY_EXEC_ERROR", e.message, null)
+                    }
+                }
+            }.start()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initiating training", e)
+            result.error("TRAIN_ERROR", e.message, null)
+        }
+    }
+
     private fun handleClassifyFile(args: Map<*, *>, result: MethodChannel.Result) {
         try {
             val text = args["text"] as? String ?: ""
-            val modelPath = getModelPath()
-            val module = python.getModule("classifier")
-            val pyResult = module.callAttr("classify_file", modelPath, text)
-            val pyMap: Map<String, Any?> = pyResult.asMap() as Map<String, Any?>
+            val modelDir = getModelDir()
 
-            val response: MutableMap<String, Any> = mutableMapOf()
-            response["topic_number"] = (pyMap["topic_number"]?.toString()?.toIntOrNull() ?: -1)
-            response["confidence"] = (pyMap["confidence"]?.toString()?.toDoubleOrNull() ?: 0.0)
+            val module = python.getModule("classifier")
+            val pyResult = module.callAttr("classify_file", modelDir, text)
+
+            // Safe extraction from PyObject dict
+            val topicNumberStr = pyResult?.callAttr("get", "topic_number")?.toString()
+            val confidenceStr = pyResult?.callAttr("get", "confidence")?.toString()
+
+            val topicNumber = topicNumberStr?.toIntOrNull() ?: -1
+            val confidence = confidenceStr?.toDoubleOrNull() ?: 0.0
+
+            val response = mapOf(
+                "topic_number" to topicNumber,
+                "confidence" to confidence
+            )
 
             result.success(response)
         } catch (e: Exception) {
@@ -92,13 +138,11 @@ class MainActivity: FlutterActivity() {
         try {
             val text = args["text"] as? String ?: ""
             val module = python.getModule("summarizer")
+
             val pyResult = module.callAttr("summarize_file", text)
-            val pyMap: Map<String, Any?> = pyResult.asMap() as Map<String, Any?>
-            val summary = pyMap["summary"]?.toString() ?: ""
 
-            val response: MutableMap<String, Any> = mutableMapOf()
-            response["summary"] = summary
-
+            val summary = pyResult?.callAttr("get", "summary")?.toString() ?: ""
+            val response = mapOf("summary" to summary)
             result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Error summarizing file", e)
@@ -111,12 +155,9 @@ class MainActivity: FlutterActivity() {
             val filePath = args["file_path"] as? String ?: ""
             val module = python.getModule("file_reader")
             val pyResult = module.callAttr("read_file", filePath)
-            val pyMap: Map<String, Any?> = pyResult.asMap() as Map<String, Any?>
-            val content = pyMap["content"]?.toString() ?: ""
 
-            val response: MutableMap<String, Any> = mutableMapOf()
-            response["content"] = content
-
+            val content = pyResult?.callAttr("get", "content")?.toString() ?: ""
+            val response = mapOf("content" to content)
             result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Error reading file", e)
@@ -130,12 +171,12 @@ class MainActivity: FlutterActivity() {
             val dataDir = applicationContext.filesDir.absolutePath
             val module = python.getModule("search_engine")
             val pyResult = module.callAttr("search_documents", dataDir, query)
-            val pyMap: Map<String, Any?> = pyResult.asMap() as Map<String, Any?>
-            val results = (pyMap["results"] as? List<*>)?.map { it.toString() } ?: emptyList()
 
-            val response: MutableMap<String, Any> = mutableMapOf()
-            response["results"] = results
+            // Extract list from PyObject
+            val pyList = pyResult?.callAttr("get", "results")?.asList() ?: emptyList<PyObject>()
+            val results = pyList.map { it.toString() }
 
+            val response = mapOf("results" to results)
             result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Error searching documents", e)
@@ -150,10 +191,7 @@ class MainActivity: FlutterActivity() {
             val dataDir = applicationContext.filesDir.absolutePath
             val module = python.getModule("search_engine")
             module.callAttr("add_to_index", dataDir, filePath, content)
-
-            val response: MutableMap<String, Any> = mutableMapOf()
-            response["status"] = "indexed"
-
+            val response = mapOf("status" to "indexed")
             result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Error adding to index", e)
@@ -169,12 +207,11 @@ class MainActivity: FlutterActivity() {
             val dataDir = applicationContext.filesDir.absolutePath
             val module = python.getModule("recommender")
             val pyResult = module.callAttr("get_recommendations", dataDir, month, weekday, hour)
-            val pyMap: Map<String, Any?> = pyResult.asMap() as Map<String, Any?>
-            val recommendations = (pyMap["recommendations"] as? List<*>)?.map { it.toString() } ?: emptyList()
 
-            val response: MutableMap<String, Any> = mutableMapOf()
-            response["recommendations"] = recommendations
+            val pyList = pyResult?.callAttr("get", "recommendations")?.asList() ?: emptyList<PyObject>()
+            val recommendations = pyList.map { it.toString() }
 
+            val response = mapOf("recommendations" to recommendations)
             result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Error getting recommendations", e)
@@ -188,10 +225,7 @@ class MainActivity: FlutterActivity() {
             val dataDir = applicationContext.filesDir.absolutePath
             val module = python.getModule("recommender")
             module.callAttr("train_recommender", dataDir, logPath)
-
-            val response: MutableMap<String, Any> = mutableMapOf()
-            response["status"] = "trained"
-
+            val response = mapOf("status" to "trained")
             result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Error training recommender", e)
@@ -218,37 +252,38 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun copyModelFromAssets() {
-        val modelFile = File(getModelPath())
+    private fun copyModelsFromAssets() {
+        val targetDir = File(getModelDir())
+        if (!targetDir.exists()) {
+            targetDir.mkdirs()
+        }
 
-        if (!modelFile.exists()) {
-            try {
-                val assetManager = applicationContext.assets
-                // Try to copy .pkl file first
-                try {
-                    assetManager.open("models/classifier_model.pkl").use { input ->
-                        modelFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    Log.i(TAG, "Model copied to: ${modelFile.absolutePath}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to copy .pkl model: ${e.message}")
-                    // Fallback: try .top2vec
-                    assetManager.open("models/classifier_model.top2vec").use { input ->
-                        modelFile.outputStream().use { output ->
-                            input.copyTo(output)
+        try {
+            val modelFiles = applicationContext.assets.list("models")
+
+            if (!modelFiles.isNullOrEmpty()) {
+                for (fileName in modelFiles) {
+                    val outFile = File(targetDir, fileName)
+                    if (!outFile.exists()) {
+                        try {
+                            applicationContext.assets.open("models/$fileName").use { input ->
+                                outFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            Log.i(TAG, "Copied asset: $fileName")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to copy asset $fileName: ${e.message}")
                         }
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error copying model: ${e.message}")
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error listing assets: ${e.message}")
         }
     }
 
-    private fun getModelPath(): String {
-        return "${applicationContext.filesDir.absolutePath}/classifier_model.pkl"
+    private fun getModelDir(): String {
+        return File(applicationContext.filesDir, "models").absolutePath
     }
-
 }

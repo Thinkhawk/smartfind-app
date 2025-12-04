@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace 'com.smartfind.smartfind_ui_perplexity'
+    namespace 'com.smartfind.smartfind_app'
     compileSdk 36
     ndkVersion '26.1.10909125'
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId 'com.smartfind.smartfind_ui_perplexity'
+        applicationId 'com.smartfind.smartfind_app'
         minSdkVersion flutter.minSdkVersion
         targetSdk 36
         versionCode 1
@@ -31,15 +31,23 @@ android {
         }
 
         python {
-            version '3.8'
+            version "3.10"
             buildPython '/usr/bin/python3'
 
             pip {
-                install 'requests==2.28.1'
-                install 'chardet==5.0.0'
-                install 'jsonlines==3.1.0'
-                install 'python-docx==0.8.11'
-                install 'PyPDF2==2.12.1'
+                // Network and File Utilities
+                install 'requests'
+                install 'chardet'
+                install 'jsonlines'
+
+                // Document Readers
+                install 'python-docx'
+                install 'pypdf' // Updated from PyPDF2 (deprecated)
+
+                // ML / Vector Processing (Lightweight Inference)
+                install 'numpy'
+                install 'scipy'
+                install 'gensim'
             }
         }
     }

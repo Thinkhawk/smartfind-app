@@ -9,9 +9,8 @@ import '../services/ml_service.dart';
 ///
 /// Handles:
 /// - Topic name loading
-/// - File classification
+/// - File classification (with "Others" fallback)
 /// - Tag mapping persistence
-/// - Topic queries
 class TagProvider with ChangeNotifier {
   final MLService _mlService = MLService();
 
@@ -23,22 +22,17 @@ class TagProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   Set<int> get visibleTopics => _tagMapping?.getVisibleTopics() ?? {};
 
-  /// Initialize with topic names
-  ///
-  /// TODO: Load from assets or backend
-  /// For now, using hardcoded example topics
+  /// Initialize with default topic names
   Future<void> loadTopicNames() async {
+    // Basic topics from 20 Newsgroups dataset (indices 0-19)
+    // Plus our fallback category (99)
     _topicNames = {
-      0: "Finance",
-      1: "Work",
-      2: "Personal",
-      3: "Research",
-      4: "Health",
-      5: "Education",
-      6: "Travel",
-      7: "Legal",
-      8: "Technology",
-      9: "Entertainment",
+      0: "Tech / Graphics", 1: "Windows OS", 2: "IBM Hardware", 3: "Mac Hardware", 4: "PC Hardware",
+      5: "For Sale", 6: "Autos", 7: "Motorcycles", 8: "Baseball", 9: "Hockey",
+      10: "Crypto / Security", 11: "Electronics", 12: "Medicine", 13: "Space", 14: "Christianity",
+      15: "Politics / Guns", 16: "Politics / Mideast", 17: "Politics / Misc", 18: "Religion / Atheism", 19: "Religion / Misc",
+      // Fallback Category for unclassified files
+      99: "Others",
     };
     notifyListeners();
   }
@@ -79,49 +73,75 @@ class TagProvider with ChangeNotifier {
   /// Classify and tag a document
   Future<void> classifyAndTagFile(DocumentModel document) async {
     try {
-      // First, read file content
+      // 1. Read file content
       final content = await _mlService.readFile(document.path);
 
+      // If read fails or empty, assign to Others immediately
       if (content == null || content.isEmpty) {
-        print('Could not read file: ${document.path}');
+        print('DEBUG: Content empty/failed for ${document.name}. Assigning to Others.');
+        _assignToTopic(document, 99);
         return;
       }
 
-      // Classify content
+      // NOTE: We REMOVED the 'indexFile' call here because indexing is now
+      // done in bulk by FileProvider._trainSearchModel()
+
+      // 2. Classify content
       final result = await _mlService.classifyFile(content);
 
-      if (result.isNotEmpty && result['topic_number'] != -1) {
-        final topicNumber = result['topic_number'] as int;
-        final confidence = result['confidence'] as double;
+      int topicNumber = result['topic_number'] ?? -1;
 
-        // Only tag if confidence is reasonable
-        if (confidence > 0.3) {
-          final topicName = _topicNames[topicNumber] ?? 'Topic $topicNumber';
-
-          // Update document
-          document.topicNumber = topicNumber;
-          document.topicName = topicName;
-
-          // Update mapping
-          _tagMapping?.fileToTopics
-              .putIfAbsent(document.path, () => [])
-              .add(topicNumber);
-          _tagMapping?.topicToFiles
-              .putIfAbsent(topicNumber, () => {})
-              .add(document.path);
-
-          // Save mapping
-          await _saveTagMapping();
-
-          // Index for search
-          await _mlService.indexFile(document.path, content);
-
-          notifyListeners();
-        }
+      // LOGIC FIX: If topic is -1 (Unknown/Low Confidence), assign to "Others" (99)
+      // This prevents files from disappearing from the UI.
+      if (topicNumber == -1) {
+        print("DEBUG: Model returned -1 for '${document.name}'. Assigning to Others.");
+        topicNumber = 99;
+      } else {
+        print("DEBUG: Classified '${document.name}' -> Topic $topicNumber");
       }
+
+      _assignToTopic(document, topicNumber);
+
     } catch (e) {
       print('Error classifying file: $e');
+      // Fallback on error -> Others
+      _assignToTopic(document, 99);
     }
+  }
+
+  /// Helper to assign topic and save
+  void _assignToTopic(DocumentModel document, int topicNumber) {
+    // Generate a name if we don't have one (e.g. if model predicts Topic 45)
+    final topicName = _topicNames[topicNumber] ?? 'Topic $topicNumber';
+
+    // Cache the name so it persists in the UI
+    if (!_topicNames.containsKey(topicNumber)) {
+      _topicNames[topicNumber] = topicName;
+    }
+
+    // Update Document Model
+    document.topicNumber = topicNumber;
+    document.topicName = topicName;
+
+    // Update Mappings
+    _tagMapping?.fileToTopics
+        .putIfAbsent(document.path, () => [])
+        .add(topicNumber);
+
+    if (_tagMapping?.topicToFiles.containsKey(topicNumber) != true) {
+      _tagMapping?.topicToFiles[topicNumber] = {};
+    }
+    _tagMapping?.topicToFiles[topicNumber]!.add(document.path);
+
+    // Update the mapping object reference
+    _tagMapping = FileTagMapping(
+        fileToTopics: _tagMapping!.fileToTopics,
+        topicNames: _topicNames,
+        topicToFiles: _tagMapping!.topicToFiles
+    );
+
+    _saveTagMapping();
+    notifyListeners();
   }
 
   /// Save tag mapping to CSV file

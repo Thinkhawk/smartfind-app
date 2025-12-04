@@ -1,15 +1,10 @@
 import 'package:flutter/services.dart';
 
 /// MLService - Bridge to Python ML models via platform channels
-///
-/// This service communicates with Python scripts running via Chaquopy
-/// to perform ML operations: classification, search, summarization, etc.
 class MLService {
   static const MethodChannel _channel = MethodChannel('com.smartfind/ml');
 
   /// Classify document text and get topic assignment
-  ///
-  /// Returns: {topic_number: int, confidence: double}
   Future<Map<String, dynamic>> classifyFile(String text) async {
     try {
       final result = await _channel.invokeMethod('classifyFile', {
@@ -23,8 +18,6 @@ class MLService {
   }
 
   /// Generate extractive summary of document
-  ///
-  /// Returns: {summary: String}
   Future<String?> getSummary(String text) async {
     try {
       final result = await _channel.invokeMethod('summarizeFile', {
@@ -37,9 +30,7 @@ class MLService {
     }
   }
 
-  /// Read file content (supports PDF, DOCX, TXT, images with OCR)
-  ///
-  /// Returns: {content: String}
+  /// Read file content
   Future<String?> readFile(String filePath) async {
     try {
       final result = await _channel.invokeMethod('readFile', {
@@ -52,9 +43,7 @@ class MLService {
     }
   }
 
-  /// Perform semantic search across indexed documents
-  ///
-  /// Returns: List of file paths
+  /// Perform semantic search
   Future<List<String>> semanticSearch(String query) async {
     try {
       final result = await _channel.invokeMethod('searchDocuments', {
@@ -67,7 +56,7 @@ class MLService {
     }
   }
 
-  /// Add document to search index
+  /// Add single document to search index (Legacy/Single addition)
   Future<void> indexFile(String filePath, String content) async {
     try {
       await _channel.invokeMethod('addToIndex', {
@@ -79,9 +68,20 @@ class MLService {
     }
   }
 
-  /// Get file recommendations based on current time
-  ///
-  /// Returns: List of recommended file paths
+  /// NEW: Trigger on-device training for search
+  /// contentMap: { 'path': 'file content' }
+  Future<void> trainSearchIndex(Map<String, String> contentMap) async {
+    try {
+      print("DEBUG: Sending ${contentMap.length} docs for training...");
+      await _channel.invokeMethod('trainSearchIndex', {
+        'files': contentMap,
+      });
+    } catch (e) {
+      print('Training error: $e');
+    }
+  }
+
+  /// Get recommendations
   Future<List<String>> getRecommendations() async {
     try {
       final now = DateTime.now();
@@ -97,7 +97,7 @@ class MLService {
     }
   }
 
-  /// Train recommendation model on access logs
+  /// Train recommendation model
   Future<void> trainRecommendationModel(String logPath) async {
     try {
       await _channel.invokeMethod('trainRecommender', {

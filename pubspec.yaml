@@ -1,4 +1,4 @@
-name: smartfind_ui_perplexity
+name: smartfind_app
 description: "AI-powered file organization and search application."
 
 publish_to: 'none'
