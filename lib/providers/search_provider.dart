@@ -10,18 +10,24 @@ class SearchProvider with ChangeNotifier {
   String _query = '';
   List<String> _searchResultPaths = [];
   bool _isSearching = false;
+  bool _isSemanticSearch = true; // Toggle state
 
   String get query => _query;
   List<String> get searchResultPaths => _searchResultPaths;
   bool get isSearching => _isSearching;
+  bool get isSemanticSearch => _isSemanticSearch;
 
-  /// Update search query
   void updateQuery(String query) {
     _query = query;
     notifyListeners();
   }
 
-  /// Perform semantic search
+  void toggleSearchMode(bool isSemantic) {
+    _isSemanticSearch = isSemantic;
+    if (_query.isNotEmpty) search();
+    notifyListeners();
+  }
+
   Future<void> search() async {
     if (_query.isEmpty) {
       _searchResultPaths = [];
@@ -33,7 +39,13 @@ class SearchProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _searchResultPaths = await _mlService.semanticSearch(_query);
+      if (_isSemanticSearch) {
+        print("DEBUG: Running Semantic Search");
+        _searchResultPaths = await _mlService.semanticSearch(_query);
+      } else {
+        print("DEBUG: Running Keyword Search");
+        _searchResultPaths = await _mlService.keywordSearch(_query);
+      }
     } catch (e) {
       print('Search error: $e');
       _searchResultPaths = [];
@@ -43,7 +55,6 @@ class SearchProvider with ChangeNotifier {
     }
   }
 
-  /// Clear search
   void clearSearch() {
     _query = '';
     _searchResultPaths = [];

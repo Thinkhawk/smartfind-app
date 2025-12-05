@@ -47,6 +47,7 @@ class MainActivity: FlutterActivity() {
                         "summarizeFile" -> handleSummarizeFile(call.arguments as Map<*, *>, result)
                         "readFile" -> handleReadFile(call.arguments as Map<*, *>, result)
                         "searchDocuments" -> handleSearchDocuments(call.arguments as Map<*, *>, result)
+                        "searchKeyword" -> handleSearchKeyword(call.arguments as Map<*, *>, result)
                         "addToIndex" -> handleAddToIndex(call.arguments as Map<*, *>, result)
                         "getRecommendations" -> handleGetRecommendations(call.arguments as Map<*, *>, result)
                         "trainRecommender" -> handleTrainRecommender(call.arguments as Map<*, *>, result)
@@ -170,8 +171,7 @@ class MainActivity: FlutterActivity() {
             val query = args["query"] as? String ?: ""
             val dataDir = applicationContext.filesDir.absolutePath
             val module = python.getModule("search_engine")
-            val pyResult = module.callAttr("search_documents", dataDir, query)
-
+            val pyResult = module.callAttr("search_semantic", dataDir, query)
             // Extract list from PyObject
             val pyList = pyResult?.callAttr("get", "results")?.asList() ?: emptyList<PyObject>()
             val results = pyList.map { it.toString() }
@@ -180,6 +180,26 @@ class MainActivity: FlutterActivity() {
             result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Error searching documents", e)
+            result.error("SEARCH_ERROR", e.message, null)
+        }
+    }
+
+    private fun handleSearchKeyword(args: Map<*, *>, result: MethodChannel.Result) {
+        try {
+            val query = args["query"] as? String ?: ""
+            val dataDir = applicationContext.filesDir.absolutePath
+            val module = python.getModule("search_engine")
+
+            val pyResult = module.callAttr("search_keyword", dataDir, query)
+
+            // Extract result list
+            val pyList = pyResult?.callAttr("get", "results")?.asList() ?: emptyList<PyObject>()
+            val results = pyList.map { it.toString() }
+
+            val response = mapOf("results" to results)
+            result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in keyword search", e)
             result.error("SEARCH_ERROR", e.message, null)
         }
     }

@@ -107,4 +107,17 @@ class MLService {
       print('Training error: $e');
     }
   }
+
+  /// Perform exact/ranked keyword search
+  Future<List<String>> keywordSearch(String query) async {
+    try {
+      final result = await _channel.invokeMethod('searchKeyword', {
+        'query': query,
+      });
+      return List<String>.from(result['results']);
+    } catch (e) {
+      print('Keyword Search error: $e');
+      return [];
+    }
+  }
 }

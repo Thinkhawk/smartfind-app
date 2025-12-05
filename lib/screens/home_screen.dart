@@ -228,27 +228,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Build search bar
   Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: TextField(
-        controller: _searchController,
-        onChanged: _onSearchChanged,
-        decoration: InputDecoration(
-          hintText: 'Search documents...',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-            icon: const Icon(Icons.clear),
-            onPressed: () {
-              _searchController.clear();
-              _onSearchChanged('');
-            },
-          )
-              : null,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          filled: true,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            decoration: InputDecoration(
+              hintText: context.watch<SearchProvider>().isSemanticSearch
+                  ? 'Smart Search (Concepts)...'
+                  : 'Keyword Search (Exact)...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _searchController.clear();
+                  _onSearchChanged('');
+                },
+              )
+                  : null,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              filled: true,
+            ),
+          ),
         ),
-      ),
+        // Toggle Switch
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Consumer<SearchProvider>(
+            builder: (context, provider, _) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    provider.isSemanticSearch ? "Smart Mode (AI)" : "Exact Match",
+                    style: TextStyle(
+                      color: provider.isSemanticSearch ? Colors.teal : Colors.orange,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: provider.isSemanticSearch,
+                      activeColor: Colors.teal,
+                      inactiveThumbColor: Colors.orange,
+                      onChanged: (value) => provider.toggleSearchMode(value),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
