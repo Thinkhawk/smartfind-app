@@ -107,4 +107,14 @@ class MLService {
       print('Training error: $e');
     }
   }
+
+  Future<List<String>> getIndexedPaths() async {
+    try {
+      final List<dynamic> result = await _channel.invokeMethod('getIndexedPaths', {});
+      return result.cast<String>();
+    } catch (e) {
+      print('Error getting indexed paths: $e');
+      return [];
+    }
+  }
 }

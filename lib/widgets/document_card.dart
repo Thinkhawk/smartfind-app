@@ -4,13 +4,6 @@ import '../models/document_model.dart';
 import '../providers/file_provider.dart';
 import '../services/ml_service.dart';
 
-/// DocumentCard - Displays document information with summary
-///
-/// Shows:
-/// - File name and type
-/// - File size
-/// - Topic tag (if classified)
-/// - Summary (loaded on demand)
 class DocumentCard extends StatefulWidget {
   final DocumentModel document;
 
@@ -25,29 +18,29 @@ class DocumentCard extends StatefulWidget {
 
 class _DocumentCardState extends State<DocumentCard> {
   bool _loadingSummary = false;
+  // We still need this for the *summarization* call, but NOT for reading
   final MLService _mlService = MLService();
 
   @override
   void initState() {
     super.initState();
-    // Load summary if not already loaded
     if (widget.document.summary == null) {
       _loadSummary();
     }
   }
 
-  /// Load document summary
   Future<void> _loadSummary() async {
     if (_loadingSummary) return;
 
     setState(() => _loadingSummary = true);
 
     try {
-      // Read file content
-      final content = await _mlService.readFile(widget.document.path);
+      // FIX: Use FileProvider to read content (Handles OCR for images!)
+      final fileProvider = context.read<FileProvider>();
+      final content = await fileProvider.getFileContent(widget.document);
 
       if (content != null && content.isNotEmpty && mounted) {
-        // Generate summary
+        // Send the text (OCR'd or read from file) to Python for summarization
         final summary = await _mlService.getSummary(content);
 
         if (summary != null && mounted) {
@@ -56,6 +49,9 @@ class _DocumentCardState extends State<DocumentCard> {
             _loadingSummary = false;
           });
         }
+      } else {
+        // Handle empty/unreadable content
+        if (mounted) setState(() => _loadingSummary = false);
       }
     } catch (e) {
       print('Error loading summary: $e');
@@ -65,7 +61,6 @@ class _DocumentCardState extends State<DocumentCard> {
     }
   }
 
-  /// Get icon for file type
   IconData _getFileIcon(String type) {
     switch (type.toLowerCase()) {
       case 'pdf':
@@ -100,7 +95,6 @@ class _DocumentCardState extends State<DocumentCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header row
               Row(
                 children: [
                   Icon(
@@ -127,7 +121,6 @@ class _DocumentCardState extends State<DocumentCard> {
                       ],
                     ),
                   ),
-                  // Topic tag
                   if (widget.document.topicName != null)
                     Chip(
                       label: Text(widget.document.topicName!),
@@ -136,8 +129,6 @@ class _DocumentCardState extends State<DocumentCard> {
                     ),
                 ],
               ),
-
-              // Summary section
               if (_loadingSummary || widget.document.summary != null) ...[
                 const SizedBox(height: 12),
                 if (_loadingSummary)

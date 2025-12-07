@@ -48,6 +48,7 @@ android {
                 install 'numpy'
                 install 'scipy'
                 install 'gensim'
+                install 'networkx==3.1'
             }
         }
     }

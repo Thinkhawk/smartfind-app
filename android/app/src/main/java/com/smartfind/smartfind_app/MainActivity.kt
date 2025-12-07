@@ -51,6 +51,7 @@ class MainActivity: FlutterActivity() {
                         "getRecommendations" -> handleGetRecommendations(call.arguments as Map<*, *>, result)
                         "trainRecommender" -> handleTrainRecommender(call.arguments as Map<*, *>, result)
                         "trainSearchIndex" -> handleTrainSearchIndex(call.arguments as Map<*, *>, result)
+                        "getIndexedPaths" -> handleGetIndexedPaths(call.arguments as Map<*, *>, result)
                         else -> result.notImplemented()
                     }
                 } catch (e: Exception) {
@@ -280,6 +281,24 @@ class MainActivity: FlutterActivity() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error listing assets: ${e.message}")
+        }
+    }
+
+    private fun handleGetIndexedPaths(args: Map<*, *>, result: MethodChannel.Result) {
+        try {
+            val dataDir = applicationContext.filesDir.absolutePath
+            val module = python.getModule("search_engine")
+
+            val pyResult = module.callAttr("get_indexed_paths", dataDir)
+
+            // Extract string list safely
+            val pyList = pyResult?.callAttr("get", "paths")?.asList() ?: emptyList<PyObject>()
+            val paths = pyList.map { it.toString() }
+
+            result.success(paths)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting indexed paths", e)
+            result.error("INDEX_INFO_ERROR", e.message, null)
         }
     }
 

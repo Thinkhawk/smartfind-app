@@ -1,101 +1,125 @@
 """
-Frequency-Based Summarizer
-Implements the extractive technique described in "Extractive Automatic Text Summarization"
-(Jugran et al.), adapted for pure Python to run efficiently on Android.
+TextRank Summarizer (Graph-Based)
+Uses cosine similarity and PageRank to find the most representative sentences.
 """
 import re
-from collections import Counter
-import heapq
+import numpy as np
+import networkx as nx
+from gensim.utils import simple_preprocess
 
-def summarize_file(text, max_sentences=3):
+def cosine_similarity(v1, v2):
+    """Compute cosine similarity between two vectors"""
+    dot_product = np.dot(v1, v2)
+    norm_v1 = np.linalg.norm(v1)
+    norm_v2 = np.linalg.norm(v2)
+    if norm_v1 == 0 or norm_v2 == 0:
+        return 0.0
+    return dot_product / (norm_v1 * norm_v2)
+
+def sentence_similarity(sent1, sent2, stopwords=None):
     """
-    Summarize text by scoring sentences based on word frequency.
-    1. Calculate word frequency (Term Frequency)
-    2. Score sentences based on the sum of their word frequencies
-    3. Select top N sentences
+    Calculate similarity between two sentences based on word overlap
+    """
+    if stopwords is None:
+        stopwords = set()
+
+    words1 = [w.lower() for w in sent1 if w.lower() not in stopwords]
+    words2 = [w.lower() for w in sent2 if w.lower() not in stopwords]
+
+    all_words = list(set(words1 + words2))
+
+    vector1 = [0] * len(all_words)
+    vector2 = [0] * len(all_words)
+
+    # Build simple frequency vectors
+    for w in words1:
+        vector1[all_words.index(w)] += 1
+
+    for w in words2:
+        vector2[all_words.index(w)] += 1
+
+    return 1 - cosine_similarity(vector1, vector2)
+
+def summarize_file(text, max_sentences=5):
+    """
+    Generate summary using TextRank algorithm.
     """
     try:
-        # Basic validation
         if not text or len(text.strip()) < 50:
-            return {"summary": text[:200]}
+            return {"summary": text[:500]}
 
-        # --- STEP 1: PREPROCESSING & WORD SCORING ---
+        # 1. Split text into sentences
+        # Robust splitting for abbreviations (Mr., Dr., etc.) would be better with NLTK,
+        # but regex is lighter for mobile.
+        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', text)
+        sentences = [s.strip() for s in sentences if len(s.split()) > 4] # Filter tiny sentences
 
-        # Normalize text to lowercase
-        text_lower = text.lower()
+        if len(sentences) <= max_sentences:
+            return {"summary": " ".join(sentences)}
 
-        # Remove special characters for word counting (keep alphanumeric + spaces)
-        clean_text = re.sub(r'[^\w\s]', '', text_lower)
-        words = clean_text.split()
+        # 2. Preprocess sentences (Tokenize)
+        # Using gensim's simple_preprocess for cleaner tokens
+        sentence_tokens = [simple_preprocess(s) for s in sentences]
 
-        # Calculate Word Frequency
-        # Stopwords list (Manual list to avoid heavy NLTK dependency)
+        # 3. Build Similarity Matrix
+        # Create an empty similarity matrix
+        sim_mat = np.zeros([len(sentences), len(sentences)])
+
+        # Manual stopword list (lightweight compared to downloading NLTK corpus)
         stopwords = {
             'the', 'and', 'of', 'to', 'a', 'in', 'is', 'that', 'for', 'it', 'on',
             'with', 'as', 'are', 'was', 'this', 'by', 'be', 'at', 'or', 'from',
             'an', 'not', 'but', 'can', 'if', 'we', 'has', 'have', 'which', 'their',
             'will', 'its', 'about', 'would', 'there', 'so', 'what', 'who', 'when',
-            'they', 'he', 'she', 'his', 'her', 'been', 'had', 'were', 'one', 'all'
+            'they', 'he', 'she', 'his', 'her', 'been', 'had', 'were', 'one', 'all',
+            'you', 'your', 'my', 'our', 'me', 'us', 'him', 'them'
         }
 
-        filtered_words = [w for w in words if w not in stopwords]
+        # Calculate similarity for every pair of sentences
+        # (Optimization: We only compute the upper triangle to save time)
+        for i in range(len(sentences)):
+            for j in range(len(sentences)):
+                if i != j:
+                    # Overlap coefficient
+                    set_i = set(w for w in sentence_tokens[i] if w not in stopwords)
+                    set_j = set(w for w in sentence_tokens[j] if w not in stopwords)
 
-        if not filtered_words:
-            return {"summary": text[:200]}
+                    if not set_i or not set_j:
+                        sim_mat[i][j] = 0.0
+                        continue
 
-        word_frequencies = Counter(filtered_words)
+                    # Jaccard-like similarity with log dampening
+                    # This formula is standard for TextRank
+                    intersection = len(set_i.intersection(set_j))
+                    log_len = np.log(len(set_i)) + np.log(len(set_j))
 
-        # Normalize frequencies (dividing by max freq)
-        # This gives the most common word a score of 1.0
-        max_freq = max(word_frequencies.values())
-        for word in word_frequencies:
-            word_frequencies[word] = word_frequencies[word] / max_freq
+                    if log_len == 0:
+                        sim_mat[i][j] = 0.0
+                    else:
+                        sim_mat[i][j] = intersection / log_len
 
-        # --- STEP 2: SENTENCE TOKENIZATION ---
+        # 4. Convert Matrix to Graph
+        nx_graph = nx.from_numpy_array(sim_mat)
 
-        # Split text into sentences using Regex (splitting on . ! ? followed by space)
-        # Lookbehind ensures we don't split on abbreviations like "Mr." or "U.S."
-        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', text)
+        # 5. Apply PageRank
+        scores = nx.pagerank(nx_graph)
 
-        # Filter out very short "sentences" (often artifacts of splitting)
-        sentences = [s.strip() for s in sentences if len(s.split()) > 4]
+        # 6. Extract Top Sentences
+        ranked_sentences = sorted(((scores[i], s) for i, s in enumerate(sentences)), reverse=True)
 
-        if len(sentences) <= max_sentences:
-            return {"summary": ' '.join(sentences)}
+        # Get top N
+        top_sentences_list = [s[1] for s in ranked_sentences[:max_sentences]]
 
-        # --- STEP 3: SENTENCE SCORING ---
-
-        sentence_scores = {}
-
+        # 7. Reorder sentences by original occurrence (for flow)
+        final_summary_sentences = []
         for sent in sentences:
-            # Tokenize sentence into words
-            sent_words = re.sub(r'[^\w\s]', '', sent.lower()).split()
+            if sent in top_sentences_list:
+                final_summary_sentences.append(sent)
 
-            # Calculate score
-            score = 0
-            word_count_in_sent = 0
-
-            for word in sent_words:
-                if word in word_frequencies:
-                    score += word_frequencies[word]
-                    word_count_in_sent += 1
-
-            # Normalize by length to avoid favoring only long sentences
-            if word_count_in_sent > 0:
-                sentence_scores[sent] = score / len(sent_words)
-
-        # --- STEP 4: SELECTION ---
-
-        # Select top N sentences with highest scores
-        top_sentences = heapq.nlargest(max_sentences, sentence_scores, key=sentence_scores.get)
-
-        # Reorder selected sentences to match their original order in the text
-        # This ensures the summary flows logically like a story
-        final_summary_sentences = sorted(top_sentences, key=lambda s: sentences.index(s))
-
-        return {"summary": ' '.join(final_summary_sentences)}
+        return {"summary": " ".join(final_summary_sentences)}
 
     except Exception as e:
-        print(f"Summarization error: {e}")
-        # Fallback to simple truncation if anything breaks
-        return {"summary": text[:200] + "..."}
+        print(f"Summarization Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"summary": text[:500] + "..."}

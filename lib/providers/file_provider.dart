@@ -28,6 +28,23 @@ class FileProvider with ChangeNotifier {
     await checkPermissions();
   }
 
+  /// SMART READ METHOD: Used by Search AND Summarizer
+  /// Automatically switches between OCR and Python reading
+  Future<String?> getFileContent(DocumentModel doc) async {
+    try {
+      if (_isImage(doc.type)) {
+        // Use Flutter OCR for Images
+        return await _ocrService.extractText(doc.path);
+      } else {
+        // Use Python for PDF/Docs
+        return await _mlService.readFile(doc.path);
+      }
+    } catch (e) {
+      print("Error reading content for ${doc.name}: $e");
+      return null;
+    }
+  }
+
   Future<void> checkPermissions() async {
     try {
       final status = await Permission.manageExternalStorage.status;
@@ -54,7 +71,6 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Load documents and train search index
   Future<void> loadDocuments() async {
     if (!_hasPermission) {
       _errorMessage = 'Storage permission not granted';
@@ -66,15 +82,9 @@ class FileProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Scan files
       _documents = await _fileService.scanDocuments();
       _errorMessage = null;
-
-      // 2. Extract Content & Train
-      // We extract content here and pass it directly to training
-      // so we don't lose the OCR results.
       await _processAndTrain();
-
     } catch (e) {
       _errorMessage = 'Error loading documents: $e';
       print(_errorMessage);
@@ -90,21 +100,10 @@ class FileProvider with ChangeNotifier {
 
     for (final doc in _documents) {
       try {
-        String? content;
-
-        // CHECK FILE TYPE
-        if (_isImage(doc.type)) {
-          // Use Flutter OCR for Images
-          content = await _ocrService.extractText(doc.path);
-        } else {
-          // Use Python for PDF/Docs
-          content = await _mlService.readFile(doc.path);
-        }
+        // REUSE the new smart method
+        final content = await getFileContent(doc);
 
         if (content != null && content.isNotEmpty) {
-          // --- CHANGE HERE ---
-          // Inject "keywords" about the file itself.
-          // If it's a png, we add words like "image picture png" to the content.
           String metaTags = "${doc.name} ${doc.type}";
 
           if (_isImage(doc.type)) {
@@ -113,7 +112,6 @@ class FileProvider with ChangeNotifier {
             metaTags += " document paper file";
           }
 
-          // Combine metadata + real content
           corpus[doc.path] = "$metaTags \n $content";
         }
       } catch (e) {
