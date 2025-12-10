@@ -2,16 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/document_model.dart';
 import '../providers/file_provider.dart';
-import '../providers/recommendation_provider.dart'; // <--- NEW IMPORT ADDED HERE
+import '../providers/recommendation_provider.dart';
 import '../services/ml_service.dart';
 
 /// DocumentCard - Displays document information with summary
-///
-/// Shows:
-/// - File name and type
-/// - File size
-/// - Topic tag (if classified)
-/// - Summary (loaded on demand)
 class DocumentCard extends StatefulWidget {
   final DocumentModel document;
 
@@ -31,25 +25,21 @@ class _DocumentCardState extends State<DocumentCard> {
   @override
   void initState() {
     super.initState();
-    // Load summary if not already loaded
     if (widget.document.summary == null) {
       _loadSummary();
     }
   }
 
-  /// Load document summary
   Future<void> _loadSummary() async {
     if (_loadingSummary) return;
 
     setState(() => _loadingSummary = true);
 
     try {
-      // Use FileProvider to read content (Handles OCR for images!)
       final fileProvider = context.read<FileProvider>();
       final content = await fileProvider.getFileContent(widget.document);
 
       if (content != null && content.isNotEmpty && mounted) {
-        // Generate summary using Python
         final summary = await _mlService.getSummary(content);
 
         if (summary != null && mounted) {
@@ -69,7 +59,6 @@ class _DocumentCardState extends State<DocumentCard> {
     }
   }
 
-  /// Get icon for file type
   IconData _getFileIcon(String type) {
     switch (type.toLowerCase()) {
       case 'pdf':
@@ -95,17 +84,16 @@ class _DocumentCardState extends State<DocumentCard> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        // --- UPDATED ONTAP HANDLER START ---
+        // --- UPDATED ONTAP HANDLER ---
         onTap: () {
-          // 1. Open File
-          context.read<FileProvider>().openDocument(widget.document);
+          // Get both providers
+          final fileProvider = context.read<FileProvider>();
+          final recProvider = context.read<RecommendationProvider>();
 
-          // 2. Update Recommendation Context
-          // This tells the app: "The user is interested in THIS file right now"
-          // so it can find similar files immediately.
-          context.read<RecommendationProvider>().setLastOpened(widget.document.path);
+          // Pass RecProvider to FileProvider to link the actions
+          fileProvider.openDocument(widget.document, recProvider);
         },
-        // --- UPDATED ONTAP HANDLER END ---
+        // -----------------------------
 
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -140,7 +128,6 @@ class _DocumentCardState extends State<DocumentCard> {
                       ],
                     ),
                   ),
-                  // Topic tag
                   if (widget.document.topicName != null)
                     Chip(
                       label: Text(widget.document.topicName!),

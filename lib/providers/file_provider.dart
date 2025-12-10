@@ -6,6 +6,8 @@ import '../services/native_file_service.dart';
 import '../services/file_access_logger.dart';
 import '../services/ml_service.dart';
 import '../services/ocr_service.dart';
+// Import RecommendationProvider to use it in openDocument
+import 'recommendation_provider.dart';
 
 class FileProvider with ChangeNotifier {
   final NativeFileService _fileService = NativeFileService();
@@ -29,14 +31,11 @@ class FileProvider with ChangeNotifier {
   }
 
   /// SMART READ METHOD: Used by Search AND Summarizer
-  /// Automatically switches between OCR and Python reading
   Future<String?> getFileContent(DocumentModel doc) async {
     try {
       if (_isImage(doc.type)) {
-        // Use Flutter OCR for Images
         return await _ocrService.extractText(doc.path);
       } else {
-        // Use Python for PDF/Docs
         return await _mlService.readFile(doc.path);
       }
     } catch (e) {
@@ -100,14 +99,14 @@ class FileProvider with ChangeNotifier {
 
     for (final doc in _documents) {
       try {
-        // REUSE the new smart method
         final content = await getFileContent(doc);
 
         if (content != null && content.isNotEmpty) {
-          String metaTags = "${doc.name} ${doc.type}";
+          // --- SIGNAL BOOSTING ---
+          String metaTags = "${doc.name} ${doc.name} ${doc.name} ${doc.type} ${doc.type}";
 
           if (_isImage(doc.type)) {
-            metaTags += " image picture photo";
+            metaTags += " image image image picture photo";
           } else if (doc.type == 'pdf' || doc.type == 'docx') {
             metaTags += " document paper file";
           }
@@ -128,14 +127,18 @@ class FileProvider with ChangeNotifier {
     return ['jpg', 'jpeg', 'png', 'bmp', 'tiff'].contains(extension.toLowerCase());
   }
 
-  Future<void> openDocument(DocumentModel document) async {
+  /// UPDATED openDocument: Accepts RecommendationProvider to trigger updates
+  Future<void> openDocument(DocumentModel document, RecommendationProvider recProvider) async {
     try {
+      // 1. Log the access for time-based history
       await _logger.logAccess(document);
 
-      // NEW: Tell RecommendationProvider this was the last active file
-      // (You need to pass the context or reference to RecommendationProvider here,
-      // or handle this in the UI layer where openDocument is called)
+      // 2. TRIGGER RECOMMENDATION UPDATE
+      // We await this so the UI updates while the file is opening or immediately after.
+      // Doing it here ensures the "Recommended" section is fresh when the user returns.
+      recProvider.updateRecommendations(document);
 
+      // 3. Open the file externally
       await OpenFile.open(document.path);
     } catch (e) {
       print('Error opening document: $e');

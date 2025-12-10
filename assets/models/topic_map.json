@@ -1,0 +1,17 @@
+{
+  "0": "Automotive",
+  "1": "Business",
+  "2": "Education",
+  "3": "Finance",
+  "4": "Health",
+  "5": "Legal",
+  "6": "Personal",
+  "7": "Politics",
+  "8": "Programming",
+  "9": "Real Estate",
+  "10": "Science",
+  "11": "Sports",
+  "12": "Technology",
+  "13": "Travel",
+  "default": "General"
+}

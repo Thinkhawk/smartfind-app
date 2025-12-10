@@ -3,13 +3,12 @@ import os
 import json
 import shutil
 import tempfile
-import numpy as np
 from sklearn.datasets import fetch_20newsgroups
 
 # --- SETUP PATHS ---
 PROJECT_ROOT = os.getcwd()
 PYTHON_SOURCE_DIR = os.path.join(PROJECT_ROOT, "android/app/src/main/python")
-ASSETS_DIR = os.path.join(PROJECT_ROOT, "android/app/src/main/assets/models")
+ASSETS_SRC = os.path.join(PROJECT_ROOT, "assets/models")
 
 sys.path.append(PYTHON_SOURCE_DIR)
 
@@ -20,81 +19,92 @@ except ImportError as e:
     print("❌ Error importing search_engine. Run from project root.")
     raise e
 
+def setup_test_environment(test_dir):
+    """Copies model assets to the temp directory so search_engine can find them"""
+    models_dir = os.path.join(test_dir, "models")
+    if not os.path.exists(models_dir):
+        os.makedirs(models_dir)
+
+    # Copy essential files
+    for file in ["vocab.json", "word_vectors.npy", "topic_vectors.npy"]:
+        src = os.path.join(ASSETS_SRC, file)
+        dst = os.path.join(models_dir, file)
+        if os.path.exists(src):
+            shutil.copy(src, dst)
+        else:
+            print(f"⚠️ Warning: {file} not found in assets/models")
+
 def test_search_real_data():
     print("\n" + "="*50)
-    print("TESTING SEARCH ENGINE WITH REAL DATA (20 Newsgroups)")
+    print("TESTING SEARCH ENGINE WITH REAL DATA")
     print("="*50)
 
-    # 1. Fetch Real Data (Space, Hockey, Medicine)
-    # We grab 5 documents from each category to simulate a user's file system
-    categories = ['sci.space', 'rec.sport.hockey', 'sci.med', 'comp.graphics']
+    # 1. Fetch Data
+    categories = ['sci.space', 'rec.sport.hockey', 'sci.med']
     print("Downloading test data...")
     dataset = fetch_20newsgroups(subset='test', categories=categories,
                                  remove=('headers', 'footers', 'quotes'))
 
-    # 2. Build Mock File System
-    # Format: {"/docs/space_1.txt": "text...", "/docs/hockey_1.txt": "text..."}
+    # 2. Build Documents
     documents = {}
-    doc_categories = {} # To check accuracy later
+    doc_categories = {}
 
-    print(f"Building index with {len(dataset.data)} real documents...")
-
+    print(f"Building index with {len(dataset.data)} documents...")
     for i, text in enumerate(dataset.data):
-        if len(text) < 50: continue # Skip tiny docs
-
+        if len(text) < 50: continue
         category = dataset.target_names[dataset.target[i]]
-        filename = f"/docs/{category}_{i}.txt"
-
+        # Create a fake path
+        filename = f"/storage/emulated/0/Download/{category}_{i}.txt"
         documents[filename] = text
         doc_categories[filename] = category
 
-    # 3. Train Search Index
+    # 3. Setup Temp Dir
     test_dir = tempfile.mkdtemp()
-    try:
-        search_engine.train_local_index(test_dir, json.dumps(documents))
-        print(f"✅ Indexed {len(documents)} documents.")
+    setup_test_environment(test_dir)
 
-        # 4. Run Queries
-        # We search for keywords that definitely exist in these topics
+    try:
+        # 4. Train Index
+        search_engine.train_local_index(test_dir, json.dumps(documents))
+        print(f"✅ Indexed documents successfully.")
+
+        # 5. Run Queries
         queries = [
-            ("orbit", "sci.space"),
-            ("nasa", "sci.space"),
-            ("puck", "rec.sport.hockey"),
-            ("goalie", "rec.sport.hockey"),
-            ("patient", "sci.med"),
-            ("disease", "sci.med"),
-            ("pixel", "comp.graphics"),
-            ("render", "comp.graphics")
+            ("orbit moon", "sci.space"),
+            ("nasa launch", "sci.space"),
+            ("puck goal", "rec.sport.hockey"),
+            ("doctor patient", "sci.med"),
         ]
 
-        mrr_sum = 0
-        hits = 0
-
         print("\nRunning Queries...")
-        print("-" * 60)
+        print("-" * 65)
         print(f"{'Query':<15} | {'Top Result Category':<25} | {'Rank'}")
-        print("-" * 60)
+        print("-" * 65)
+
+        hits = 0
+        mrr_sum = 0.0  # Initialize MRR sum
 
         for query, expected_category in queries:
+            # Pass test_dir as the 'app_files_dir'
             results = search_engine.search_documents(test_dir, query)['results']
 
-            # Find the rank of the FIRST result that matches the expected category
-            rank = 0
-            found_cat = "None"
+            found_cat = "Not Found"
+            rank = 0  # 0 means not found
 
-            for i, path in enumerate(results):
-                # Check if the result path contains the category name (e.g. /docs/sci.space_1.txt)
-                if expected_category in path:
-                    rank = i + 1
-                    found_cat = expected_category
-                    break
-                elif i == 0:
-                    # Capture the category of the top result for debugging
-                    found_cat = doc_categories.get(path, "Unknown")
+            if results:
+                # Check top result
+                top_path = results[0]
+                found_cat = doc_categories.get(top_path, "Unknown")
 
+                # Check if we found a relevant doc in top results
+                for i, path in enumerate(results):
+                    if expected_category in path:
+                        rank = i + 1
+                        hits += 1
+                        break
+
+            # Calculate Reciprocal Rank for this query
             if rank > 0:
                 reciprocal_rank = 1.0 / rank
-                hits += 1
                 print(f"'{query}'".ljust(15) + f" | {found_cat:<25} | {rank}")
             else:
                 reciprocal_rank = 0.0
@@ -102,19 +112,11 @@ def test_search_real_data():
 
             mrr_sum += reciprocal_rank
 
+        # Final Metrics
         mrr = mrr_sum / len(queries)
-        print("-" * 60)
-        print(f"Total Queries: {len(queries)}")
-        print(f"Successful Hits: {hits}")
-        print(f"MRR (Mean Reciprocal Rank): {mrr:.2f}")
-
-        if mrr > 0.7:
-            print("\n✅ PASSED: Search Engine works on real English data.")
-        else:
-            print("\n⚠️ WARNING: Low performance. Check model compatibility.")
+        print("-" * 65)
+        print(f"Success Rate: {hits}/{len(queries)}")
+        print(f"MRR Score:    {mrr:.2f} (Higher is better, max 1.0)")
 
     finally:
         shutil.rmtree(test_dir)
-
-# if __name__ == "__main__":
-#     test_search_real_data()

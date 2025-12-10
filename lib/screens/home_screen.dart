@@ -82,10 +82,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Handle search input
   void _onSearchChanged(String query) {
     final searchProvider = context.read<SearchProvider>();
+    final fileProvider = context.read<FileProvider>(); // Get FileProvider
+
     searchProvider.updateQuery(query);
 
     if (query.isNotEmpty) {
-      searchProvider.search();
+      searchProvider.search(fileProvider.documents);
     } else {
       searchProvider.clearSearch();
     }

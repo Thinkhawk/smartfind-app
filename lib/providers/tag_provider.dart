@@ -8,7 +8,9 @@ import '../models/document_model.dart';
 import '../services/ml_service.dart';
 
 /// TagProvider - Manages file-to-topic mappings
-/// Uses a Hybrid approach: Extension Check (for Code) + ML Model (for Docs)
+///
+/// UPDATED: Uses a Pure ML approach. All files are sent to the trained model
+/// for classification. No hardcoded extension rules.
 class TagProvider with ChangeNotifier {
   final MLService _mlService = MLService();
 
@@ -19,13 +21,13 @@ class TagProvider with ChangeNotifier {
   FileTagMapping? get tagMapping => _tagMapping;
   bool get isLoading => _isLoading;
 
-  // RESTORED: This getter was missing
   Set<int> get visibleTopics => _tagMapping?.getVisibleTopics() ?? {};
 
   /// Load topic names from local JSON asset
   Future<void> loadTopicNames() async {
     try {
-      final jsonString = await rootBundle.loadString('assets/topic_map.json');
+      // CHANGE THIS LINE: Load from 'assets/models/' where the python script saved it
+      final jsonString = await rootBundle.loadString('assets/models/topic_map.json');
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
 
       _topicNames = jsonMap.map((key, value) => MapEntry(key, value.toString()));
@@ -54,9 +56,8 @@ class TagProvider with ChangeNotifier {
         }
       });
 
-      // Ensure "Programming" exists in the map for our manual override
-      intTopicMap[9999] = "Programming";
-      intTopicMap[100] = "Others"; // Default fallback
+      // Default fallback
+      intTopicMap[100] = "Others";
 
       if (await file.exists()) {
         final csvContent = await file.readAsString();
@@ -81,42 +82,41 @@ class TagProvider with ChangeNotifier {
     }
   }
 
-  /// Classify and tag a document
+  /// Classify and tag a document using purely the ML Model
   Future<void> classifyAndTagFile(DocumentModel document) async {
 
-    // --- 1. EXTENSION SAFETY NET ---
-    // ML models trained on News often fail on Code. We force a tag here.
-    final ext = document.type.toLowerCase();
-    const codeExtensions = ['py', 'java', 'cpp', 'js', 'html', 'css', 'dart', 'c', 'h', 'xml', 'json', 'sql', 'php', 'rb', 'go', 'kt', 'swift'];
-
-    if (codeExtensions.contains(ext)) {
-      print("DEBUG: Detected code extension '$ext'. Forcing 'Programming' tag.");
-      _assignToTopic(document, 9999, forceName: "Programming");
-      return;
-    }
-
-    // --- 2. ML CLASSIFICATION ---
+    // --- ML CLASSIFICATION (Dynamic) ---
+    // We send the content to Python. The Python 'classifier.py' script
+    // uses the trained model (vectors) to decide the topic.
     try {
       final content = await _mlService.readFile(document.path);
 
       if (content == null || content.isEmpty) {
-        _assignToTopic(document, 100); // "General" / Others
+        print("DEBUG: Content empty for ${document.name}. Assigning to Others.");
+        _assignToTopic(document, 100); // 100 = "Others" / Uncategorized
         return;
       }
 
+      print("DEBUG: Sending '${document.name}' to ML Classifier...");
+
       final result = await _mlService.classifyFile(content);
       int topicNumber = result['topic_number'] ?? -1;
+      double confidence = result['confidence'] ?? 0.0;
 
-      // Handle Invalid/Low Confidence
-      if (topicNumber == -1) {
+      // Filter Low Confidence if necessary
+      if (topicNumber == -1 || confidence < 0.2) {
+        // 0.2 is an example threshold. Adjust based on your model's performance.
+        print("DEBUG: Low confidence ($confidence) for ${document.name}. Tagging as Others.");
         topicNumber = 100;
+      } else {
+        print("DEBUG: Classified ${document.name} -> Topic $topicNumber ($confidence)");
       }
 
       _assignToTopic(document, topicNumber);
 
     } catch (e) {
-      print('Error classifying file: $e');
-      _assignToTopic(document, 100);
+      print('Error classifying file ${document.name}: $e');
+      _assignToTopic(document, 100); // Fail gracefully to Others
     }
   }
 
@@ -127,16 +127,17 @@ class TagProvider with ChangeNotifier {
     if (forceName != null) {
       topicName = forceName;
     } else {
+      // Look up the ID in the JSON map we loaded earlier
       topicName = _topicNames[topicNumber.toString()] ??
           _topicNames['default'] ??
           'General';
     }
 
-    // 2. Update Document
+    // 2. Update Document Model
     document.topicNumber = topicNumber;
     document.topicName = topicName;
 
-    // 3. Update Provider Data
+    // 3. Update Provider Data (In-Memory)
     _tagMapping?.fileToTopics
         .putIfAbsent(document.path, () => [])
         .add(topicNumber);
@@ -146,12 +147,12 @@ class TagProvider with ChangeNotifier {
     }
     _tagMapping?.topicToFiles[topicNumber]!.add(document.path);
 
-    // Add to internal map if missing (for runtime display)
+    // Add to internal map if missing (ensures UI shows correct name)
     if (!_topicNames.containsKey(topicNumber.toString())) {
       _topicNames[topicNumber.toString()] = topicName;
     }
 
-    // 4. Save
+    // 4. Persist to Storage
     _saveTagMapping();
     notifyListeners();
   }
@@ -172,7 +173,6 @@ class TagProvider with ChangeNotifier {
   }
 
   String getTopicName(int topicNumber) {
-    if (topicNumber == 9999) return "Programming";
     return _topicNames[topicNumber.toString()] ?? 'General';
   }
 

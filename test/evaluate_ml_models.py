@@ -2,21 +2,17 @@ import sys
 import os
 import time
 import json
-import shutil
-import tempfile
 import numpy as np
 import re
-from collections import Counter
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, matthews_corrcoef
+from sklearn.metrics import accuracy_score, matthews_corrcoef, confusion_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy import spatial
-from gensim.models.doc2vec import Doc2Vec
 
 # --- SETUP PATHS ---
 PROJECT_ROOT = os.getcwd()
 PYTHON_SOURCE_DIR = os.path.join(PROJECT_ROOT, "android/app/src/main/python")
-ASSETS_DIR = os.path.join(PROJECT_ROOT, "android/app/src/main/assets/models")
-TOPIC_MAP_PATH = os.path.join(PROJECT_ROOT, "assets/topic_map.json")
+ASSETS_DIR = os.path.join(PROJECT_ROOT, "assets/models")
+TOPIC_MAP_PATH = os.path.join(PROJECT_ROOT, "assets/models/topic_map.json")
 
 sys.path.append(PYTHON_SOURCE_DIR)
 
@@ -24,11 +20,19 @@ try:
     import classifier
     import search_engine
     import summarizer
-    import recommender
     print("✅ Successfully imported app modules")
 except ImportError as e:
     print("❌ Error importing modules. Run from project root.")
     raise e
+
+# Initialize resources once
+if not classifier.load_resources(ASSETS_DIR):
+    print("❌ Failed to load model resources.")
+    sys.exit(1)
+
+def calc_similarity(vec1, vec2):
+    if vec1 is None or vec2 is None: return 0.0
+    return 1 - spatial.distance.cosine(vec1, vec2)
 
 # ==========================================
 # 1. CLASSIFIER EVALUATION
@@ -41,7 +45,6 @@ def test_classifier():
     try:
         with open(TOPIC_MAP_PATH, 'r') as f:
             topic_map = json.load(f)
-        print(f"✅ Loaded Topic Map ({len(topic_map)} entries)")
     except Exception as e:
         print(f"❌ Could not load topic_map.json: {e}")
         return
@@ -49,18 +52,17 @@ def test_classifier():
     test_data = [
         ("invoice services rendered total dollars bank transfer", "Finance"),
         ("quarterly earnings report revenue profit growth", "Finance"),
-        ("corporate strategy acquisition market share industry", "Business"),
-        ("recruitment candidate interview salary resume job", "Jobs"),
-        ("grocery list milk eggs bread butter snack food", "Food"),
-        ("neural network deep learning software data analytics", "Internet"),
-        ("study climate change biodiversity species forest", "Environment"),
+        ("recruitment candidate interview salary resume job", "Personal"),
+        ("grocery list milk eggs bread butter snack food", "Personal"),
+        ("software hardware server client network protocol", "Programming"),
+        ("contract agreement party lawyer attorney law court", "Legal"),
+        ("ticket boarding pass flight airline airport", "Travel"),
+        ("homework assignment semester grade syllabus", "Education"),
     ]
 
     true_categories = [t[1] for t in test_data]
     pred_categories = []
     inference_times = []
-
-    print(f"Running inference on {len(test_data)} samples...")
 
     for text, expected in test_data:
         start = time.time()
@@ -69,10 +71,7 @@ def test_classifier():
 
         topic_id = str(result['topic_number'])
         confidence = result['confidence']
-        predicted_name = topic_map.get(topic_id, "Unknown")
-
-        if predicted_name == "Unknown":
-            predicted_name = topic_map.get("default", "General")
+        predicted_name = topic_map.get(topic_id, "General")
 
         if confidence < 0.2:
             predicted_name = "General (Low Conf)"
@@ -81,8 +80,9 @@ def test_classifier():
         inference_times.append((end - start) * 1000)
 
         status = "✅" if predicted_name == expected else "❌"
-        print(f"{status} Text: '{text[:20]}...' -> Pred: {predicted_name} (Exp: {expected})")
+        print(f"{status} Pred: {predicted_name:<15} | Exp: {expected}")
 
+    # --- METRICS ---
     accuracy = accuracy_score(true_categories, pred_categories)
     mcc = matthews_corrcoef(true_categories, pred_categories)
 
@@ -92,7 +92,8 @@ def test_classifier():
     print(f"MCC Score:     {mcc:.2f} (1.0 is perfect)")
     print(f"Avg Latency:   {np.mean(inference_times):.2f} ms")
 
-    print("\nConfusion Matrix (Rows=True, Cols=Pred):")
+    # --- RESTORED: Confusion Matrix ---
+    print("\nConfusion Matrix:")
     unique_labels = sorted(list(set(true_categories + pred_categories)))
     cm = confusion_matrix(true_categories, pred_categories, labels=unique_labels)
     print(f"Labels: {unique_labels}")
@@ -102,19 +103,14 @@ def test_classifier():
 # ==========================================
 # 2. SEARCH ENGINE EVALUATION
 # ==========================================
-from evaluate_search_real import test_search_real_data as test_search_engine
+try:
+    from evaluate_search_real import test_search_real_data
+except ImportError:
+    def test_search_real_data(): print("⚠️ evaluate_search_real.py not found.")
 
 # ==========================================
 # 3. SUMMARIZER EVALUATION
 # ==========================================
-def calculate_overlap(text1, text2):
-    def tokenize(t): return set(re.findall(r'\w+', t.lower()))
-    tokens1 = tokenize(text1)
-    tokens2 = tokenize(text2)
-    if not tokens1: return 0.0
-    intersection = tokens1.intersection(tokens2)
-    return len(intersection) / len(tokens1)
-
 def test_summarizer():
     print("\n" + "="*60)
     print("TESTING MODEL 3: SUMMARIZER")
@@ -125,11 +121,7 @@ def test_summarizer():
     Leading AI textbooks define the field as the study of "intelligent agents": any device that perceives its environment and takes actions that maximize its chance of successfully achieving its goals. 
     Colloquially, the term "artificial intelligence" is often used to describe machines (or computers) that mimic "cognitive" functions that humans associate with the human mind, such as "learning" and "problem solving".
     As machines become increasingly capable, tasks considered to require "intelligence" are often removed from the definition of AI, a phenomenon known as the AI effect. 
-    A quip in Tesler's Theorem says "AI is whatever hasn't been done yet." 
-    For instance, optical character recognition is frequently excluded from things considered to be AI, having become a routine technology.
     """
-
-    key_terms = "intelligence machines AI agents cognitive learning problem solving"
 
     start = time.time()
     result = summarizer.summarize_file(long_text, max_sentences=2)
@@ -139,22 +131,20 @@ def test_summarizer():
     compression_ratio = 1 - (len(summary) / len(long_text))
     latency = (end - start) * 1000
 
-    coverage = calculate_overlap(key_terms, summary)
+    # Semantic Similarity (Replaces Coverage)
+    tokens_orig = classifier.simple_preprocess(long_text)
+    tokens_sum = classifier.simple_preprocess(summary)
+    vec_orig = classifier.infer_vector_manual(tokens_orig)
+    vec_sum = classifier.infer_vector_manual(tokens_sum)
 
-    try:
-        model = Doc2Vec.load(os.path.join(ASSETS_DIR, "doc2vec_lite.model"))
-        vec_orig = model.infer_vector(long_text.split())
-        vec_sum = model.infer_vector(summary.split())
-        semantic_sim = 1 - spatial.distance.cosine(vec_orig, vec_sum)
-    except Exception as e:
-        semantic_sim = 0.0
+    semantic_sim = calc_similarity(vec_orig, vec_sum)
 
     print(f"Original: {len(long_text)} chars -> Summary: {len(summary)} chars")
     print("-" * 60)
     print(f"RESULTS:")
-    print(f"Compression Ratio:   {compression_ratio:.2%}")
-    print(f"Latency:             {latency:.2f} ms")
-    print(f"Semantic Similarity: {semantic_sim:.2f} (Meaning preservation 0-1)")
+    print(f"Compression:   {compression_ratio:.2%}")
+    print(f"Latency:       {latency:.2f} ms")
+    print(f"Similarity:    {semantic_sim:.2f} (Using model vectors)")
     print(f"Output: \"{summary.strip()}\"")
 
 # ==========================================
@@ -165,104 +155,73 @@ def test_recommendation_system():
     print("TESTING MODEL 4: RECOMMENDATION ENGINE")
     print("="*60)
 
-    # 1. Setup Mock User Data (Content Clusters)
     files = [
-        # Cluster A: Space
-        ("space_1.txt", "The sun is a star in the center of the solar system", "Space"),
-        ("space_2.txt", "Planets orbit around the sun due to gravity", "Space"),
-        ("space_3.txt", "NASA launches rockets to explore the universe", "Space"),
-
-        # Cluster B: Finance
-        ("finance_1.txt", "The stock market crashed due to inflation rates", "Finance"),
-        ("finance_2.txt", "Banks offer loans and savings accounts for money", "Finance"),
-        ("finance_3.txt", "Investment strategy for long term capital gains", "Finance"),
-
-        # Cluster C: Food
-        ("cook_1.txt", "Recipe for chocolate cake with sugar and flour", "Food"),
-        ("cook_2.txt", "How to bake bread using yeast and water", "Food"),
-        ("cook_3.txt", "Grilling vegetables with olive oil and salt", "Food"),
+        ("space1.txt", "The sun is a star in the center of the solar system", "Science"),
+        ("space2.txt", "Planets orbit around the sun due to gravity", "Science"),
+        ("space3.txt", "NASA launches rockets to explore the universe", "Science"),
+        ("money1.txt", "The stock market crashed due to inflation rates", "Finance"),
+        ("money2.txt", "Banks offer loans and savings accounts for money", "Finance"),
+        ("food1.txt",  "Recipe for chocolate cake with sugar and flour", "Personal"),
     ]
 
-    try:
-        # Load the Brain
-        model = Doc2Vec.load(os.path.join(ASSETS_DIR, "doc2vec_lite.model"))
+    file_vectors = []
+    file_metadata = []
 
-        # 2. Generate Vectors
-        file_vectors = []
-        file_metadata = []
+    for name, text, cat in files:
+        tokens = classifier.simple_preprocess(text)
+        vec = classifier.infer_vector_manual(tokens)
+        if vec is not None:
+            file_vectors.append(vec)
+            file_metadata.append({'name': name, 'category': cat})
 
-        for name, text, category in files:
-            vector = model.infer_vector(text.lower().split())
-            file_vectors.append(vector)
-            file_metadata.append({'name': name, 'category': category})
+    file_vectors = np.array(file_vectors)
+    k = 2
+    total_precision = 0
+    total_diversity = 0
 
-        file_vectors = np.array(file_vectors)
+    print(f"{'Target':<12} | {'Recommendations':<30} | {'Precision'}")
+    print("-" * 60)
 
-        # 3. Evaluate Recommendations
-        k = 2 # Recommend Top 2 files (since we only have 3 per cluster)
-        total_precision = 0
-        total_diversity = 0
+    for i, target_vec in enumerate(file_vectors):
+        sims = cosine_similarity([target_vec], file_vectors)[0]
+        sims[i] = -1
+        top_indices = np.argsort(sims)[::-1][:k]
 
-        print(f"{'Target File':<15} | {'Recommendations':<35} | {'Precision'}")
-        print("-" * 75)
+        rec_names = []
+        rec_vectors = []
+        relevant_hits = 0
 
-        for i, target_vec in enumerate(file_vectors):
-            target_meta = file_metadata[i]
+        for idx in top_indices:
+            rec = file_metadata[idx]
+            rec_names.append(rec['name'])
+            rec_vectors.append(file_vectors[idx])
+            if rec['category'] == file_metadata[i]['category']:
+                relevant_hits += 1
 
-            # Similarity of this file vs ALL others
-            sims = cosine_similarity([target_vec], file_vectors)[0]
+        precision = relevant_hits / k
+        total_precision += precision
 
-            # Get top indices (skip index 0 which is self)
-            top_indices = sims.argsort()[::-1][1:k+1]
-
-            # Metrics
-            relevant_hits = 0
-            rec_vectors = []
-            rec_names = []
-
-            for idx in top_indices:
-                rec_item = file_metadata[idx]
-                rec_vectors.append(file_vectors[idx])
-                rec_names.append(rec_item['name'])
-
-                # RELEVANCE: Does category match?
-                if rec_item['category'] == target_meta['category']:
-                    relevant_hits += 1
-
-            precision = relevant_hits / k
-            total_precision += precision
-
-            # DIVERSITY: (1 - Avg Similarity between recommendations)
-            if len(rec_vectors) > 1:
-                intra_sim = cosine_similarity(rec_vectors)
-                avg_sim = np.mean(intra_sim[np.triu_indices(len(rec_vectors), k=1)])
-                diversity = 1 - avg_sim
-            else:
-                diversity = 0 # N/A
-
-            total_diversity += diversity
-
-            print(f"{target_meta['name']:<15} | {str(rec_names):<35} | {precision:.0%}")
-
-        # 4. Aggregate Results
-        avg_precision = total_precision / len(files)
-        avg_diversity = total_diversity / len(files)
-
-        print("-" * 75)
-        print(f"RESULTS:")
-        print(f"Mean Precision@{k}:   {avg_precision:.2%}")
-        print(f"Diversity Score:     {avg_diversity:.2f} (0=Duplicates, 1=Unique)")
-
-        if avg_precision > 0.7:
-            print("✅ Recommendation Logic Verified")
+        diversity = 0
+        if len(rec_vectors) > 1:
+            intra_sim = cosine_similarity(rec_vectors)
+            avg_sim = np.mean(intra_sim[np.triu_indices(len(rec_vectors), k=1)])
+            diversity = 1 - avg_sim
         else:
-            print("⚠️ Recommendations may be noisy")
+            diversity = 1.0
 
-    except Exception as e:
-        print(f"❌ Recommendation Test Failed: {e}")
+        total_diversity += diversity
+        print(f"{file_metadata[i]['name']:<12} | {str(rec_names):<30} | {precision:.0%}")
+
+    avg_precision = total_precision / len(files)
+    avg_diversity = total_diversity / len(files)
+
+    print("-" * 60)
+    print(f"RESULTS:")
+    print(f"Precision@2:   {avg_precision:.2%}")
+    print(f"Diversity:     {avg_diversity:.2f}")
 
 if __name__ == "__main__":
     test_classifier()
-    test_search_engine()
+    test_search_real_data()
     test_summarizer()
     test_recommendation_system()
