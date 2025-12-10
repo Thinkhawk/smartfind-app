@@ -12,18 +12,48 @@ class RecommendationProvider with ChangeNotifier {
   List<String> get recommendedFilePaths => _recommendedFilePaths;
   bool get isLoading => _isLoading;
 
-  /// Load recommendations for current time
+// Add a field to track the last opened file
+  String? _lastOpenedPath;
+
+  void setLastOpened(String path) {
+    _lastOpenedPath = path;
+    // Auto-refresh recommendations when context changes
+    refresh();
+  }
+
   Future<void> loadRecommendations() async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // 1. Train first! (Consume any new logs from CSV)
-      final logPath = await _logger.getLogPath();
-      await _mlService.trainRecommendationModel(logPath);
+      List<String> results = [];
 
-      // 2. Now get predictions based on the updated model
-      _recommendedFilePaths = await _mlService.getRecommendations();
+      // STRATEGY 1: Content-Based (High Priority)
+      // "Since you just looked at X, here is Y"
+      if (_lastOpenedPath != null) {
+        print("DEBUG: Fetching content-based recs for $_lastOpenedPath");
+        final similar = await _mlService.getSimilarFiles(_lastOpenedPath!);
+        results.addAll(similar);
+      }
+
+      // STRATEGY 2: Time-Based (Fill the rest)
+      // "It's Monday morning, here is what you usually open"
+      if (results.length < 5) {
+        // Train first to ensure logs are up to date
+        final logPath = await _logger.getLogPath();
+        await _mlService.trainRecommendationModel(logPath);
+
+        final timeBased = await _mlService.getRecommendations();
+
+        // Add unique items only
+        for (var path in timeBased) {
+          if (!results.contains(path) && results.length < 5) {
+            results.add(path);
+          }
+        }
+      }
+
+      _recommendedFilePaths = results;
 
     } catch (e) {
       print('Error loading recommendations: $e');

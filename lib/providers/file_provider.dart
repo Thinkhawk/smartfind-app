@@ -131,6 +131,11 @@ class FileProvider with ChangeNotifier {
   Future<void> openDocument(DocumentModel document) async {
     try {
       await _logger.logAccess(document);
+
+      // NEW: Tell RecommendationProvider this was the last active file
+      // (You need to pass the context or reference to RecommendationProvider here,
+      // or handle this in the UI layer where openDocument is called)
+
       await OpenFile.open(document.path);
     } catch (e) {
       print('Error opening document: $e');

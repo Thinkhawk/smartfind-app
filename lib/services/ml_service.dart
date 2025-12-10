@@ -117,4 +117,17 @@ class MLService {
       return [];
     }
   }
+
+  /// Get files semantically similar to a specific document
+  Future<List<String>> getSimilarFiles(String filePath) async {
+    try {
+      final result = await _channel.invokeMethod('getSimilarFiles', {
+        'file_path': filePath,
+      });
+      return List<String>.from(result['results']);
+    } catch (e) {
+      print('Similarity error: $e');
+      return [];
+    }
+  }
 }

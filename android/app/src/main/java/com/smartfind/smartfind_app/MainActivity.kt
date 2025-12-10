@@ -52,6 +52,7 @@ class MainActivity: FlutterActivity() {
                         "trainRecommender" -> handleTrainRecommender(call.arguments as Map<*, *>, result)
                         "trainSearchIndex" -> handleTrainSearchIndex(call.arguments as Map<*, *>, result)
                         "getIndexedPaths" -> handleGetIndexedPaths(call.arguments as Map<*, *>, result)
+                        "getSimilarFiles" -> handleGetSimilarFiles(call.arguments as Map<*, *>, result)
                         else -> result.notImplemented()
                     }
                 } catch (e: Exception) {
@@ -305,4 +306,24 @@ class MainActivity: FlutterActivity() {
     private fun getModelDir(): String {
         return File(applicationContext.filesDir, "models").absolutePath
     }
+
+    private fun handleGetSimilarFiles(args: Map<*, *>, result: MethodChannel.Result) {
+        try {
+            val filePath = args["file_path"] as? String ?: ""
+            val dataDir = applicationContext.filesDir.absolutePath
+            val module = python.getModule("search_engine")
+
+            val pyResult = module.callAttr("get_similar_files", dataDir, filePath)
+
+            val pyList = pyResult?.callAttr("get", "results")?.asList() ?: emptyList<PyObject>()
+            val results = pyList.map { it.toString() }
+
+            val response = mapOf("results" to results)
+            result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting similar files", e)
+            result.error("SIMILAR_ERROR", e.message, null)
+        }
+    }
 }
+

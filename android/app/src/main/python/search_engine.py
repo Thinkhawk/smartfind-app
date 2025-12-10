@@ -122,3 +122,34 @@ def search_documents(data_dir, query):
     except Exception as e:
         print(f"Semantic Search error: {e}")
         return {"results": []}
+
+def get_similar_files(data_dir, file_path):
+    """
+    Find files semantically similar to the given file path.
+    Uses the Doc2Vec model to find nearest neighbors in vector space.
+    """
+    try:
+        _load_resources(data_dir)
+
+        if _model is None:
+            return {"results": []}
+
+        # Check if this file is in our "Brain"
+        # key_to_index holds words; index_to_key holds document tags (filepaths)
+        if file_path not in _model.dv.index_to_key:
+            print(f"DEBUG: File not in index: {file_path}")
+            return {"results": []}
+
+        # Ask the brain: "What is close to this file?"
+        # topn=5 gets the 5 most similar docs
+        sims = _model.dv.most_similar(file_path, topn=5)
+
+        # Format: [('path1', 0.98), ('path2', 0.95)]
+        results = [path for path, score in sims]
+
+        print(f"DEBUG: Found similar files for {file_path}: {results}")
+        return {"results": results}
+
+    except Exception as e:
+        print(f"Similarity error: {e}")
+        return {"results": []}
