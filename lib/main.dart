@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:smartfind_app/services/ml_service.dart';
 import 'screens/home_screen.dart';
 import 'providers/file_provider.dart';
 import 'providers/tag_provider.dart';
@@ -8,6 +9,10 @@ import 'providers/recommendation_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize ML Assets (Copy models to storage)
+  final mlService = MLService();
+  await mlService.initialize();
 
   runApp(const SmartFindApp());
 }

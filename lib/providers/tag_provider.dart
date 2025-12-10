@@ -18,6 +18,8 @@ class TagProvider with ChangeNotifier {
 
   FileTagMapping? get tagMapping => _tagMapping;
   bool get isLoading => _isLoading;
+
+  // RESTORED: This getter was missing
   Set<int> get visibleTopics => _tagMapping?.getVisibleTopics() ?? {};
 
   /// Load topic names from local JSON asset
@@ -54,6 +56,7 @@ class TagProvider with ChangeNotifier {
 
       // Ensure "Programming" exists in the map for our manual override
       intTopicMap[9999] = "Programming";
+      intTopicMap[100] = "Others"; // Default fallback
 
       if (await file.exists()) {
         final csvContent = await file.readAsString();

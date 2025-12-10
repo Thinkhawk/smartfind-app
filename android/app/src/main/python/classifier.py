@@ -1,139 +1,105 @@
 import os
+import json
 import numpy as np
-from gensim.models.doc2vec import Doc2Vec
-from gensim.utils import simple_preprocess
+import re
+from java.util import ArrayList
 
-# Global cache to prevent reloading the model on every click
-_dv_model = None
+# Global Cache to keep app fast
+_vocab = None
+_word_vectors = None
 _topic_vectors = None
-_topic_words = None
 
-def _load_resources(model_dir):
+def load_resources(asset_path):
+    """Load raw mathematical weights instead of fragile pickle objects"""
+    global _vocab, _word_vectors, _topic_vectors
+
+    if _vocab is None:
+        try:
+            print(f"DEBUG: Loading safe model assets from {asset_path}...")
+
+            # 1. Load Vocab
+            with open(os.path.join(asset_path, "vocab.json"), "r") as f:
+                _vocab = json.load(f)
+
+            # 2. Load Word Vectors
+            _word_vectors = np.load(os.path.join(asset_path, "word_vectors.npy"))
+
+            # 3. Load Topic Vectors
+            _topic_vectors = np.load(os.path.join(asset_path, "topic_vectors.npy"))
+
+            print(f"DEBUG: Model Loaded. Vocab: {len(_vocab)}, Vectors: {_word_vectors.shape}")
+            return True
+        except Exception as e:
+            print(f"CRITICAL ERROR loading model: {e}")
+            return False
+    return True
+
+def simple_preprocess(text):
+    """Simple tokenizer to match Gensim's logic"""
+    return [word.lower() for word in re.findall(r'\b\w\w+\b', text)]
+
+def infer_vector_manual(words):
     """
-    Load the Doc2Vec model and Topic Vectors from the specified directory.
-    This runs once and caches the result.
+    Manually calculate document vector by averaging word vectors.
+    This bypasses the need for the complex Doc2Vec object.
     """
-    global _dv_model, _topic_vectors, _topic_words
+    global _vocab, _word_vectors
 
-    try:
-        if _dv_model is None:
-            model_path = os.path.join(model_dir, "doc2vec_lite.model")
-            if os.path.exists(model_path):
-                print(f"Loading Doc2Vec model from {model_path}...")
-                _dv_model = Doc2Vec.load(model_path)
-            else:
-                print(f"Error: Doc2Vec model not found at {model_path}")
+    vectors = []
+    for word in words:
+        if word in _vocab:
+            idx = _vocab[word]
+            vectors.append(_word_vectors[idx])
 
-        if _topic_vectors is None:
-            vec_path = os.path.join(model_dir, "topic_vectors.npy")
-            if os.path.exists(vec_path):
-                print(f"Loading topic vectors from {vec_path}...")
-                _topic_vectors = np.load(vec_path)
+    if not vectors:
+        return None
 
-        # Optional: Load words if you want to verify topics later
-        if _topic_words is None:
-            words_path = os.path.join(model_dir, "topic_words.npy")
-            if os.path.exists(words_path):
-                _topic_words = np.load(words_path, allow_pickle=True)
+    # Average the vectors (Standard approach for lightweight inference)
+    return np.mean(vectors, axis=0)
 
-    except Exception as e:
-        print(f"Error loading resources: {e}")
-
-def classify_file(model_dir, text):
+def classify_file(asset_path, text_content):
     """
-    Classify text using Cosine Similarity between the doc vector and topic centroids.
-
-    Args:
-        model_dir (str): Path to the directory containing model files.
-        text (str): The document text to classify.
-
-    Returns:
-        dict: {"topic_number": int, "confidence": float}
+    Main entry point called by Flutter
     """
-    try:
-        # 1. Validate Input
-        if not text or len(text.strip()) < 10:
-            return {"topic_number": -1, "confidence": 0.0}
-
-        # 2. Load Resources (if not already loaded)
-        _load_resources(model_dir)
-
-        if _dv_model is None or _topic_vectors is None:
-            print("Model resources missing. Falling back to keywords.")
-            return classify_with_keywords(text)
-
-        # 3. Preprocess Text (Must match how the model was trained!)
-        tokens = simple_preprocess(text)
-        if not tokens:
-            return {"topic_number": -1, "confidence": 0.0}
-
-        # 4. Infer Vector
-        # Generates a vector representation for the new text
-        doc_vector = _dv_model.infer_vector(tokens)
-
-        # 5. Calculate Cosine Similarity with all Topic Vectors
-        # Similarity = (A . B) / (||A|| * ||B||)
-
-        # Dot product
-        scores = np.dot(_topic_vectors, doc_vector)
-
-        # Magnitudes (Norms)
-        topic_norms = np.linalg.norm(_topic_vectors, axis=1)
-        doc_norm = np.linalg.norm(doc_vector)
-
-        # Avoid division by zero
-        if doc_norm == 0:
-            return {"topic_number": -1, "confidence": 0.0}
-
-        cosine_sims = scores / (topic_norms * doc_norm)
-
-        # 6. Find Best Match
-        best_topic_idx = int(np.argmax(cosine_sims))
-        raw_score = float(cosine_sims[best_topic_idx])
-
-        # Clamp score to 0.0 - 1.0 range for UI display
-        confidence = max(0.0, min(raw_score, 1.0))
-
-        return {
-            "topic_number": best_topic_idx,
-            "confidence": confidence
-        }
-
-    except Exception as e:
-        print(f"Classification Error: {e}")
-        return classify_with_keywords(text)
-
-def classify_with_keywords(text):
-    """Fallback: Simple keyword-based classification"""
-    try:
-        text_lower = text.lower()
-
-        # 0: Finance, 1: Work, 2: Personal, 3: Research
-        categories = {
-            0: ["finance", "money", "budget", "invoice", "receipt", "bank"],
-            1: ["work", "project", "meeting", "deadline", "client", "proposal"],
-            2: ["personal", "diary", "family", "vacation", "grocery", "gym"],
-            3: ["research", "paper", "study", "experiment", "analysis", "data"]
-        }
-
-        scores = {}
-        for topic_num, keywords in categories.items():
-            matches = sum(1 for kw in keywords if kw in text_lower)
-            if matches > 0:
-                scores[topic_num] = matches
-
-        if not scores:
-            return {"topic_number": -1, "confidence": 0.0}
-
-        best_topic = max(scores.items(), key=lambda x: x[1])
-        # Arbitrary confidence calc for keywords
-        confidence = min(best_topic[1] * 0.2, 1.0)
-
-        return {
-            "topic_number": best_topic[0],
-            "confidence": confidence
-        }
-
-    except Exception as e:
-        print(f"Keyword classification error: {e}")
+    if not text_content or len(text_content.strip()) < 5:
         return {"topic_number": -1, "confidence": 0.0}
+
+    # 1. Load Model
+    if not load_resources(asset_path):
+        return {"topic_number": -1, "confidence": 0.0}
+
+    # 2. Preprocess
+    tokens = simple_preprocess(text_content)
+    if not tokens:
+        return {"topic_number": -1, "confidence": 0.0}
+
+    # 3. Infer Vector (The "Brain")
+    doc_vector = infer_vector_manual(tokens)
+
+    if doc_vector is None:
+        # Document contained no known words
+        print("DEBUG: No known words in document.")
+        return {"topic_number": -1, "confidence": 0.0}
+
+    # 4. Find Closest Topic (Cosine Similarity)
+    # Cosine Sim = (A . B) / (||A|| * ||B||)
+
+    # Normalize doc vector
+    norm_doc = np.linalg.norm(doc_vector)
+    if norm_doc == 0: return {"topic_number": -1, "confidence": 0.0}
+
+    # Calculate similarity against all 50 topics at once
+    # topic_vectors should already be normalized during training ideally,
+    # but we compute dot product here.
+
+    scores = np.dot(_topic_vectors, doc_vector) / (np.linalg.norm(_topic_vectors, axis=1) * norm_doc)
+
+    best_topic_id = int(np.argmax(scores))
+    confidence = float(scores[best_topic_id])
+
+    print(f"DEBUG: Classified as Topic {best_topic_id} with conf {confidence:.2f}")
+
+    return {
+        "topic_number": best_topic_id,
+        "confidence": confidence
+    }
