@@ -118,4 +118,14 @@ class MLService {
       return [];
     }
   }
+
+  Future<List<dynamic>> findDuplicateClusters() async {
+    try {
+      final result = await _channel.invokeMethod('findDuplicateClusters');
+      return result ?? [];
+    } catch (e) {
+      print("Error calling findDuplicateClusters: $e");
+      return [];
+    }
+  }
 }
