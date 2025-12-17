@@ -9,14 +9,6 @@ import '../widgets/recommendation_section.dart';
 import '../widgets/tag_gallery.dart';
 import '../widgets/document_card.dart';
 
-/// HomeScreen - Main application screen
-///
-/// Displays:
-/// - Permission request (if needed)
-/// - Search bar
-/// - Recommended files
-/// - Category gallery
-/// - Search results (when searching)
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -42,32 +34,26 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  /// Initialize app - check permissions and load data
   Future<void> _initializeApp() async {
     final fileProvider = context.read<FileProvider>();
     final tagProvider = context.read<TagProvider>();
     final recommendationProvider = context.read<RecommendationProvider>();
 
-    // Initialize file provider
     await fileProvider.initialize();
 
     if (fileProvider.hasPermission) {
-      // Load topic names
       await tagProvider.loadTopicNames();
 
-      // Load data in parallel
       await Future.wait([
         fileProvider.loadDocuments(),
         tagProvider.loadTagMapping(),
         recommendationProvider.loadRecommendations(),
       ]);
 
-      // Classify untagged files in background
       _classifyUntaggedFiles();
     }
   }
 
-  /// Classify files that don't have topics yet
   Future<void> _classifyUntaggedFiles() async {
     final fileProvider = context.read<FileProvider>();
     final tagProvider = context.read<TagProvider>();
@@ -79,7 +65,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Handle search input
   void _onSearchChanged(String query) {
     final searchProvider = context.read<SearchProvider>();
     final fileProvider = context.read<FileProvider>(); // Get FileProvider
@@ -93,7 +78,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Request storage permission
   Future<void> _requestPermission() async {
     final fileProvider = context.read<FileProvider>();
     final granted = await fileProvider.requestPermission();
@@ -106,7 +90,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Show permission dialog
   void _showPermissionDialog() {
     showDialog(
       context: context,
@@ -114,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Storage Permission Required'),
         content: const Text(
           'SmartFind needs "All files access" permission to scan and organize your documents.\n\n'
-              'Please enable it in Settings > Special app access > All files access.',
+          'Please enable it in Settings > Special app access > All files access.',
         ),
         actions: [
           TextButton(
@@ -140,14 +123,16 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(
-              'assets/logo-bgl-nn.png', // Ensure this exists in pubspec.yaml assets
-              width: 50
-            ),
+            Image.asset('assets/logo-bgl-nn.png',
+                // Ensure this exists in pubspec.yaml assets
+                width: 50),
             // const SizedBox(width: 0),
             const Text(
               'SmartFind',
-              style: TextStyle(fontWeight: FontWeight.bold,fontSize: 26,color: Color.fromRGBO(117, 70, 202, .8)),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 26,
+                  color: Color.fromRGBO(117, 70, 202, .8)),
             ),
           ],
         ),
@@ -161,29 +146,24 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Consumer<FileProvider>(
         builder: (context, fileProvider, child) {
-          // Show permission request if not granted
           if (!fileProvider.hasPermission) {
             return _buildPermissionRequest();
           }
 
-          // Show loading indicator
           if (fileProvider.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          // Show error message if any
           if (fileProvider.errorMessage != null) {
             return _buildError(fileProvider.errorMessage!);
           }
 
-          // Show main content
           return _buildMainContent();
         },
       ),
     );
   }
 
-  /// Build permission request UI
   Widget _buildPermissionRequest() {
     return Center(
       child: Column(
@@ -191,23 +171,22 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const Icon(Icons.folder_open, size: 80, color: Colors.grey),
           const SizedBox(height: 24),
-          const Text('Permission Required', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          ElevatedButton(onPressed: _requestPermission, child: const Text('Grant')),
+          const Text('Permission Required',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          ElevatedButton(
+              onPressed: _requestPermission, child: const Text('Grant')),
         ],
       ),
     );
   }
 
-  /// Build error UI
   Widget _buildError(String message) {
     return Center(child: Text(message));
   }
 
-  /// Build main content
   Widget _buildMainContent() {
     return Consumer<SearchProvider>(
       builder: (context, searchProvider, child) {
-        // Show search results if searching
         if (searchProvider.query.isNotEmpty) {
           return Column(
             children: [
@@ -241,7 +220,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Build search bar
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -253,12 +231,12 @@ class _HomeScreenState extends State<HomeScreen> {
           prefixIcon: const Icon(Icons.search),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
-            icon: const Icon(Icons.clear),
-            onPressed: () {
-              _searchController.clear();
-              _onSearchChanged('');
-            },
-          )
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                )
               : null,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: true,
@@ -267,7 +245,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Build categories header
   Widget _buildCategoriesHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -275,13 +252,16 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           const Icon(Icons.folder, color: Colors.blue),
           const SizedBox(width: 8),
-          Text('Categories', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+          Text('Categories',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  /// Build search results
   Widget _buildSearchResults(SearchProvider searchProvider) {
     if (searchProvider.isSearching) {
       return const Center(child: CircularProgressIndicator());
@@ -289,13 +269,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final fileProvider = context.read<FileProvider>();
 
-    // --- DEBUGGING LOGIC ---
-    // Normalize paths by trimming to ensure matches
-    final resultPaths = searchProvider.searchResultPaths.map((p) => p.trim()).toSet();
+    final resultPaths =
+        searchProvider.searchResultPaths.map((p) => p.trim()).toSet();
 
     if (resultPaths.isNotEmpty) {
       print("DEBUG: UI received ${resultPaths.length} matches from Python.");
-      // Print first match for verification
       print("DEBUG: Sample match: ${resultPaths.first}");
     }
 
@@ -304,7 +282,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final isMatch = resultPaths.contains(normalizedPath);
       return isMatch;
     }).toList();
-    // -----------------------
 
     if (resultDocs.isEmpty) {
       return Center(
@@ -313,7 +290,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            Text('No results found', style: Theme.of(context).textTheme.titleMedium),
+            Text('No results found',
+                style: Theme.of(context).textTheme.titleMedium),
             if (searchProvider.searchResultPaths.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.all(16.0),

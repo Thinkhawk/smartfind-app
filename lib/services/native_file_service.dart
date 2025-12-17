@@ -3,7 +3,6 @@ import 'package:path/path.dart' as path;
 import '../models/document_model.dart';
 
 class NativeFileService {
-  // UPDATED: Added programming and code extensions
   static const List<String> _supportedExtensions = [
     // Documents
     'pdf', 'doc', 'docx', 'txt', 'md', 'csv',
@@ -13,17 +12,17 @@ class NativeFileService {
 
     // Code / Programming
     'py', 'dart', 'java', 'kt', 'swift', // Languages
-    'c', 'cpp', 'h', 'cs',               // C/C++/C#
-    'js', 'ts', 'html', 'css',           // Web
-    'json', 'xml', 'yaml', 'yml',        // Data/Config
+    'c', 'cpp', 'h', 'cs', // C/C++/C#
+    'js', 'ts', 'html', 'css', // Web
+    'json', 'xml', 'yaml', 'yml', // Data/Config
     'sql', 'sh', 'bat', 'properties', 'gradle'
   ];
 
   List<String> get _documentPaths => [
-    '/storage/emulated/0/Documents',
-    '/storage/emulated/0/Download',
-    '/storage/emulated/0/DCIM',
-  ];
+        '/storage/emulated/0/Documents',
+        '/storage/emulated/0/Download',
+        '/storage/emulated/0/DCIM',
+      ];
 
   Future<List<DocumentModel>> scanDocuments() async {
     final List<DocumentModel> documents = [];
@@ -61,7 +60,8 @@ class NativeFileService {
       final fileName = path.basename(file.path);
       if (!fileName.contains('.')) return null;
 
-      final extension = path.extension(fileName).replaceFirst('.', '').toLowerCase();
+      final extension =
+          path.extension(fileName).replaceFirst('.', '').toLowerCase();
 
       if (!_supportedExtensions.contains(extension)) {
         return null;

@@ -4,10 +4,8 @@ import numpy as np
 import re
 import classifier
 
+
 def train_local_index(app_files_dir, documents_json):
-    """
-    Converts file text -> Vectors and saves them.
-    """
     try:
         models_dir = os.path.join(app_files_dir, "models")
         if not classifier.load_resources(models_dir):
@@ -41,10 +39,8 @@ def train_local_index(app_files_dir, documents_json):
     except Exception as e:
         print(f"Search Training Error: {e}")
 
+
 def search_documents(app_files_dir, query):
-    """
-    Vector Search: Query -> Vector vs Index Vectors
-    """
     try:
         models_dir = os.path.join(app_files_dir, "models")
         if not classifier.load_resources(models_dir):
@@ -84,12 +80,9 @@ def search_documents(app_files_dir, query):
         print(f"Search Error: {e}")
         return {"results": []}
 
+
 def get_similar_files(app_files_dir, file_path):
-    """
-    Finds files semantically similar to the given file path.
-    """
     try:
-        # 1. Load Index
         index_path = os.path.join(app_files_dir, "search_index.json")
         if not os.path.exists(index_path):
             return {"results": []}
@@ -97,7 +90,6 @@ def get_similar_files(app_files_dir, file_path):
         with open(index_path, "r") as f:
             index_data = json.load(f)
 
-        # 2. Find the vector for the input file
         target_vec = None
         for item in index_data:
             if item['path'] == file_path:
@@ -108,22 +100,18 @@ def get_similar_files(app_files_dir, file_path):
             print(f"DEBUG: File not found in index: {file_path}")
             return {"results": []}
 
-        # 3. Compare against all other files
         results = []
         for item in index_data:
-            if item['path'] == file_path: continue # Skip self
+            if item['path'] == file_path: continue  # Skip self
 
             doc_vec = np.array(item['vector'])
             score = np.dot(target_vec, doc_vec)
 
-            # Lower threshold for recommendations to show *something*
             if score > 0.1:
                 results.append((item['path'], score))
 
-        # 4. Sort
         results.sort(key=lambda x: x[1], reverse=True)
 
-        # Return top 5
         top_results = [r[0] for r in results[:5]]
         print(f"DEBUG: Semantic recommendations for {file_path}: {top_results}")
 

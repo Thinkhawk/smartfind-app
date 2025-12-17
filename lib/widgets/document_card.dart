@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
 import '../models/document_model.dart';
 import '../providers/file_provider.dart';
 import '../providers/recommendation_provider.dart';
 import '../services/ml_service.dart';
 
-/// DocumentCard - Displays document information with summary
 class DocumentCard extends StatefulWidget {
   final DocumentModel document;
 
@@ -84,24 +84,17 @@ class _DocumentCardState extends State<DocumentCard> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        // --- UPDATED ONTAP HANDLER ---
-        onTap: () {
-          // Get both providers
-          final fileProvider = context.read<FileProvider>();
-          final recProvider = context.read<RecommendationProvider>();
-
-          // Pass RecProvider to FileProvider to link the actions
-          fileProvider.openDocument(widget.document, recProvider);
+        onTap: () async {
+          Provider.of<RecommendationProvider>(context, listen: false)
+              .updateRecommendations(widget.document);
+          OpenResult result = await OpenFile.open(widget.document.path);
         },
-        // -----------------------------
-
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header row
               Row(
                 children: [
                   Icon(
@@ -136,8 +129,6 @@ class _DocumentCardState extends State<DocumentCard> {
                     ),
                 ],
               ),
-
-              // Summary section
               if (_loadingSummary || widget.document.summary != null) ...[
                 const SizedBox(height: 12),
                 if (_loadingSummary)

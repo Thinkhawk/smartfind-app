@@ -5,7 +5,6 @@ import 'package:path_provider/path_provider.dart';
 class MLService {
   static const MethodChannel _channel = MethodChannel('com.smartfind/ml');
 
-  /// Call this in main.dart before running the app
   Future<void> initialize() async {
     print("DEBUG: Initializing MLService assets...");
     final directory = await getApplicationSupportDirectory();
@@ -15,7 +14,6 @@ class MLService {
       await modelsDir.create(recursive: true);
     }
 
-    // List of ALL files to copy
     final assets = [
       'vocab.json',
       'word_vectors.npy',
@@ -36,11 +34,10 @@ class MLService {
     }
   }
 
-  // --- Core ML Methods ---
-
   Future<Map<String, dynamic>> classifyFile(String text) async {
     try {
-      final result = await _channel.invokeMethod('classifyFile', {'text': text});
+      final result =
+          await _channel.invokeMethod('classifyFile', {'text': text});
       return Map<String, dynamic>.from(result);
     } catch (e) {
       print('Classification error: $e');
@@ -50,7 +47,8 @@ class MLService {
 
   Future<String?> getSummary(String text) async {
     try {
-      final result = await _channel.invokeMethod('summarizeFile', {'text': text});
+      final result =
+          await _channel.invokeMethod('summarizeFile', {'text': text});
       return result['summary'] as String?;
     } catch (e) {
       return null;
@@ -59,18 +57,18 @@ class MLService {
 
   Future<String?> readFile(String filePath) async {
     try {
-      final result = await _channel.invokeMethod('readFile', {'file_path': filePath});
+      final result =
+          await _channel.invokeMethod('readFile', {'file_path': filePath});
       return result['content'] as String?;
     } catch (e) {
       return null;
     }
   }
 
-  // --- Search & Indexing ---
-
   Future<List<String>> semanticSearch(String query) async {
     try {
-      final result = await _channel.invokeMethod('searchDocuments', {'query': query});
+      final result =
+          await _channel.invokeMethod('searchDocuments', {'query': query});
       return List<String>.from(result['results']);
     } catch (e) {
       return [];
@@ -99,7 +97,8 @@ class MLService {
 
   Future<List<String>> getIndexedPaths() async {
     try {
-      final List<dynamic> result = await _channel.invokeMethod('getIndexedPaths', {});
+      final List<dynamic> result =
+          await _channel.invokeMethod('getIndexedPaths', {});
       return result.cast<String>();
     } catch (e) {
       print('Error getting indexed paths: $e');
@@ -107,16 +106,11 @@ class MLService {
     }
   }
 
-  // --- Content-Based Similarity Only ---
-
-  /// Finds files that are semantically similar to the provided file path.
-  /// Uses Vector Embeddings (Word2Vec/Doc2Vec) via Python backend.
   Future<List<String>> getSimilarFiles(String filePath) async {
     try {
       final result = await _channel.invokeMethod('getSimilarFiles', {
         'file_path': filePath,
       });
-      // Safety check
       if (result == null || result['results'] == null) return [];
       return List<String>.from(result['results']);
     } catch (e) {

@@ -4,9 +4,6 @@ import '../providers/tag_provider.dart';
 import '../providers/file_provider.dart';
 import '../widgets/document_list.dart';
 
-/// TagFilesScreen - Shows all files in a specific category/topic
-///
-/// Displays files filtered by topic number
 class TagFilesScreen extends StatelessWidget {
   final int topicNumber;
   final String topicName;
@@ -41,10 +38,8 @@ class TagFilesScreen extends StatelessWidget {
       ),
       body: Consumer2<TagProvider, FileProvider>(
         builder: (context, tagProvider, fileProvider, child) {
-          // Get file paths for this topic
           final filePaths = tagProvider.getFilesForTopic(topicNumber);
 
-          // Get document objects
           final documents = fileProvider.documents
               .where((doc) => filePaths.contains(doc.path))
               .toList();
@@ -62,7 +57,6 @@ class TagFilesScreen extends StatelessWidget {
     );
   }
 
-  /// Build empty state
   Widget _buildEmptyState(BuildContext context) {
     return Center(
       child: Column(

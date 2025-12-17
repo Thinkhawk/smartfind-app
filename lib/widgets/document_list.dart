@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import '../models/document_model.dart';
 import 'document_card.dart';
 
-/// DocumentList - Reusable list of documents
-///
-/// Displays documents in a scrollable list with empty state
 class DocumentList extends StatelessWidget {
   final List<DocumentModel> documents;
   final String emptyMessage;

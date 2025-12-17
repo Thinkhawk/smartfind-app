@@ -4,9 +4,6 @@ import '../providers/recommendation_provider.dart';
 import '../providers/file_provider.dart';
 import '../widgets/document_card.dart';
 
-/// RecommendationSection - Displays recommended files
-///
-/// Shows horizontally scrollable list of recommended documents
 class RecommendationSection extends StatelessWidget {
   const RecommendationSection({super.key});
 
@@ -20,7 +17,7 @@ class RecommendationSection extends StatelessWidget {
 
         final recommendedDocs = fileProvider.documents
             .where((doc) =>
-            recommendationProvider.recommendedFilePaths.contains(doc.path))
+                recommendationProvider.recommendedFilePaths.contains(doc.path))
             .take(5)
             .toList();
 
@@ -40,8 +37,8 @@ class RecommendationSection extends StatelessWidget {
                   Text(
                     'Recommended for you',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
                 ],
               ),

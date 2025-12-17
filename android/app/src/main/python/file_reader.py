@@ -1,11 +1,8 @@
-"""
-Read file content (supports PDF, DOCX, TXT, Code) with robust error logging
-"""
 import os
 import traceback
 
+
 def read_file(file_path):
-    """Read file and extract text"""
     print(f"DEBUG: Python reading file: {file_path}")
 
     try:
@@ -14,12 +11,10 @@ def read_file(file_path):
 
         file_path = file_path.strip()
 
-        # Check if file exists and is readable
         if not os.path.exists(file_path):
             print(f"DEBUG: File does not exist at path: {file_path}")
             return {"content": ""}
 
-        # PDF files
         if file_path.lower().endswith('.pdf'):
             try:
                 print("DEBUG: Attempting to read PDF with pypdf...")
@@ -28,7 +23,6 @@ def read_file(file_path):
                 with open(file_path, 'rb') as f:
                     pdf = PdfReader(f)
                     text = ''
-                    # Read up to 15 pages
                     num_pages = len(pdf.pages)
                     print(f"DEBUG: PDF has {num_pages} pages")
 
@@ -44,7 +38,6 @@ def read_file(file_path):
                 traceback.print_exc()
                 return {"content": ""}
 
-        # DOCX files
         elif file_path.lower().endswith('.docx'):
             try:
                 print("DEBUG: Attempting to read DOCX...")
@@ -58,7 +51,6 @@ def read_file(file_path):
                 traceback.print_exc()
                 return {"content": ""}
 
-        # Text/Code files - UPDATED LIST
         elif file_path.lower().endswith((
                 '.txt', '.md', '.csv',
                 '.py', '.dart', '.java', '.kt', '.swift',
@@ -77,7 +69,6 @@ def read_file(file_path):
                 print(f"DEBUG: Text reading error: {e}")
                 return {"content": ""}
 
-        # Images/Other (OCR handled in Dart)
         else:
             print(f"DEBUG: Unsupported file type for text extraction: {file_path}")
             return {"content": ""}

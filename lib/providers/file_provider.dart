@@ -3,15 +3,12 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:open_file/open_file.dart';
 import '../models/document_model.dart';
 import '../services/native_file_service.dart';
-import '../services/file_access_logger.dart';
 import '../services/ml_service.dart';
 import '../services/ocr_service.dart';
-// Import RecommendationProvider to use it in openDocument
 import 'recommendation_provider.dart';
 
 class FileProvider with ChangeNotifier {
   final NativeFileService _fileService = NativeFileService();
-  final FileAccessLogger _logger = FileAccessLogger();
   final MLService _mlService = MLService();
   final OcrService _ocrService = OcrService();
 
@@ -21,16 +18,17 @@ class FileProvider with ChangeNotifier {
   String? _errorMessage;
 
   List<DocumentModel> get documents => _documents;
+
   bool get isLoading => _isLoading;
+
   bool get hasPermission => _hasPermission;
+
   String? get errorMessage => _errorMessage;
 
   Future<void> initialize() async {
-    await _logger.initialize();
     await checkPermissions();
   }
 
-  /// SMART READ METHOD: Used by Search AND Summarizer
   Future<String?> getFileContent(DocumentModel doc) async {
     try {
       if (_isImage(doc.type)) {
@@ -102,8 +100,8 @@ class FileProvider with ChangeNotifier {
         final content = await getFileContent(doc);
 
         if (content != null && content.isNotEmpty) {
-          // --- SIGNAL BOOSTING ---
-          String metaTags = "${doc.name} ${doc.name} ${doc.name} ${doc.type} ${doc.type}";
+          String metaTags =
+              "${doc.name} ${doc.name} ${doc.name} ${doc.type} ${doc.type}";
 
           if (_isImage(doc.type)) {
             metaTags += " image image image picture photo";
@@ -124,21 +122,14 @@ class FileProvider with ChangeNotifier {
   }
 
   bool _isImage(String extension) {
-    return ['jpg', 'jpeg', 'png', 'bmp', 'tiff'].contains(extension.toLowerCase());
+    return ['jpg', 'jpeg', 'png', 'bmp', 'tiff']
+        .contains(extension.toLowerCase());
   }
 
-  /// UPDATED openDocument: Accepts RecommendationProvider to trigger updates
-  Future<void> openDocument(DocumentModel document, RecommendationProvider recProvider) async {
+  Future<void> openDocument(
+      DocumentModel document, RecommendationProvider recProvider) async {
     try {
-      // 1. Log the access for time-based history
-      await _logger.logAccess(document);
-
-      // 2. TRIGGER RECOMMENDATION UPDATE
-      // We await this so the UI updates while the file is opening or immediately after.
-      // Doing it here ensures the "Recommended" section is fresh when the user returns.
-      recProvider.updateRecommendations(document);
-
-      // 3. Open the file externally
+      await recProvider.updateRecommendations(document);
       await OpenFile.open(document.path);
     } catch (e) {
       print('Error opening document: $e');
@@ -155,10 +146,6 @@ class FileProvider with ChangeNotifier {
 
   Future<void> refresh() async {
     await loadDocuments();
-  }
-
-  Future<String> getAccessLogPath() async {
-    return await _logger.getLogPath();
   }
 
   @override

@@ -3,13 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/tag_provider.dart';
 import '../screens/tag_files_screen.dart';
 
-/// TagGallery - Grid of category/topic cards
-///
-/// Displays all topics that have at least one file
 class TagGallery extends StatelessWidget {
   const TagGallery({super.key});
 
-  // Color palette for categories
   static const List<Color> _categoryColors = [
     Color(0xFF2196F3), // Blue
     Color(0xFF4CAF50), // Green
@@ -53,8 +49,8 @@ class TagGallery extends StatelessWidget {
           itemCount: visibleTopics.length,
           itemBuilder: (context, index) {
             final topicNumber = visibleTopics[index];
-            final topicName = tagProvider.getTopicName(topicNumber) ??
-                'Topic $topicNumber';
+            final topicName =
+                tagProvider.getTopicName(topicNumber) ?? 'Topic $topicNumber';
             final fileCount = tagProvider.getTopicFileCount(topicNumber);
 
             return _buildCategoryCard(
@@ -69,7 +65,6 @@ class TagGallery extends StatelessWidget {
     );
   }
 
-  /// Build empty state
   Widget _buildEmptyState(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(32),
@@ -97,13 +92,12 @@ class TagGallery extends StatelessWidget {
     );
   }
 
-  /// Build individual category card
   Widget _buildCategoryCard(
-      BuildContext context,
-      int topicNumber,
-      String topicName,
-      int fileCount,
-      ) {
+    BuildContext context,
+    int topicNumber,
+    String topicName,
+    int fileCount,
+  ) {
     final color = _categoryColors[topicNumber % _categoryColors.length];
 
     return Card(

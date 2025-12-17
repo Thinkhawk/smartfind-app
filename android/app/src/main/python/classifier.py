@@ -3,12 +3,10 @@ import json
 import numpy as np
 import re
 
-# Global Cache
 _vocab = None
 _word_vectors = None
 _topic_vectors = None
 
-# MATCHING STOPWORDS LIST (Critical for accuracy)
 STOPWORDS = {
     'the', 'and', 'to', 'of', 'a', 'in', 'is', 'that', 'for', 'it', 'on', 'with', 'as',
     'was', 'at', 'by', 'an', 'be', 'this', 'which', 'or', 'from', 'but', 'not', 'are',
@@ -23,6 +21,7 @@ STOPWORDS = {
     'list', 'name', 'just', 'over', 'state', 'year', 'day', 'into', 'email', 'two',
     'health', 'n', 'world', 're', 'next', 'used', 'go', 'b', 'work', 'last', 'most'
 }
+
 
 def load_resources(asset_path):
     global _vocab, _word_vectors, _topic_vectors
@@ -39,12 +38,11 @@ def load_resources(asset_path):
             return False
     return True
 
+
 def simple_preprocess(text):
-    """Tokenize and REMOVE STOPWORDS"""
-    # 1. Split by non-word characters
     tokens = re.findall(r'\b[a-z]{3,}\b', text.lower())
-    # 2. Filter out stopwords (The fix!)
     return [t for t in tokens if t not in STOPWORDS]
+
 
 def infer_vector_manual(words):
     global _vocab, _word_vectors
@@ -56,6 +54,7 @@ def infer_vector_manual(words):
 
     if not vectors: return None
     return np.mean(vectors, axis=0)
+
 
 def classify_file(asset_path, text_content):
     if not text_content or len(text_content.strip()) < 5:
