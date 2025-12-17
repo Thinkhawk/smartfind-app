@@ -13,7 +13,7 @@ import com.chaquo.python.PyObject
 import com.chaquo.python.android.AndroidPlatform
 import java.io.File
 
-class MainActivity: FlutterActivity() {
+class MainActivity : FlutterActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val ML_CHANNEL = "com.smartfind/ml"
@@ -43,15 +43,18 @@ class MainActivity: FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
+                        // Core Features
                         "classifyFile" -> handleClassifyFile(call.arguments as Map<*, *>, result)
                         "summarizeFile" -> handleSummarizeFile(call.arguments as Map<*, *>, result)
                         "readFile" -> handleReadFile(call.arguments as Map<*, *>, result)
+
+                        // Search & Indexing
                         "searchDocuments" -> handleSearchDocuments(call.arguments as Map<*, *>, result)
                         "addToIndex" -> handleAddToIndex(call.arguments as Map<*, *>, result)
-                        "getRecommendations" -> handleGetRecommendations(call.arguments as Map<*, *>, result)
-                        "trainRecommender" -> handleTrainRecommender(call.arguments as Map<*, *>, result)
                         "trainSearchIndex" -> handleTrainSearchIndex(call.arguments as Map<*, *>, result)
                         "getIndexedPaths" -> handleGetIndexedPaths(call.arguments as Map<*, *>, result)
+
+                        // Recommendation (Content-Based / P8)
                         "getSimilarFiles" -> handleGetSimilarFiles(call.arguments as Map<*, *>, result)
                         else -> result.notImplemented()
                     }
@@ -73,6 +76,25 @@ class MainActivity: FlutterActivity() {
             }
     }
 
+    private fun handleGetSimilarFiles(args: Map<*, *>, result: MethodChannel.Result) {
+        try {
+            val filePath = args["file_path"] as? String ?: ""
+            val dataDir = applicationContext.filesDir.absolutePath
+            val module = python.getModule("search_engine")
+            val pyResult = module.callAttr("get_similar_files", dataDir, filePath)
+            val pyList = pyResult?.callAttr("get", "results")?.asList() ?: emptyList<PyObject>()
+            val results = pyList.map { it.toString() }
+                .filter { it != filePath }
+                .distinct()
+
+            val response = mapOf("results" to results)
+            result.success(response)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting similar files", e)
+            result.error("SIMILAR_ERROR", e.message, null)
+        }
+    }
+
     private fun handleTrainSearchIndex(args: Map<*, *>, result: MethodChannel.Result) {
         try {
             @Suppress("UNCHECKED_CAST")
@@ -81,15 +103,11 @@ class MainActivity: FlutterActivity() {
             val dataDir = applicationContext.filesDir.absolutePath
             val module = python.getModule("search_engine")
 
-            // FIX: Convert Map to JSON String manually to avoid Chaquopy type issues
-            // Using standard org.json library which is always available in Android
             val jsonObject = org.json.JSONObject(files)
             val jsonString = jsonObject.toString()
 
-            // Run training on background thread
             Thread {
                 try {
-                    // Pass the JSON string instead of the Map
                     val pyResult = module.callAttr("train_local_index", dataDir, jsonString)
                     runOnUiThread {
                         val status = pyResult?.callAttr("get", "status")?.toString()
@@ -117,7 +135,6 @@ class MainActivity: FlutterActivity() {
             val module = python.getModule("classifier")
             val pyResult = module.callAttr("classify_file", modelDir, text)
 
-            // Safe extraction from PyObject dict
             val topicNumberStr = pyResult?.callAttr("get", "topic_number")?.toString()
             val confidenceStr = pyResult?.callAttr("get", "confidence")?.toString()
 
@@ -140,9 +157,7 @@ class MainActivity: FlutterActivity() {
         try {
             val text = args["text"] as? String ?: ""
             val module = python.getModule("summarizer")
-
             val pyResult = module.callAttr("summarize_file", text)
-
             val summary = pyResult?.callAttr("get", "summary")?.toString() ?: ""
             val response = mapOf("summary" to summary)
             result.success(response)
@@ -157,7 +172,6 @@ class MainActivity: FlutterActivity() {
             val filePath = args["file_path"] as? String ?: ""
             val module = python.getModule("file_reader")
             val pyResult = module.callAttr("read_file", filePath)
-
             val content = pyResult?.callAttr("get", "content")?.toString() ?: ""
             val response = mapOf("content" to content)
             result.success(response)
@@ -174,7 +188,6 @@ class MainActivity: FlutterActivity() {
             val module = python.getModule("search_engine")
             val pyResult = module.callAttr("search_documents", dataDir, query)
 
-            // Extract list from PyObject
             val pyList = pyResult?.callAttr("get", "results")?.asList() ?: emptyList<PyObject>()
             val results = pyList.map { it.toString() }
 
@@ -201,37 +214,17 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun handleGetRecommendations(args: Map<*, *>, result: MethodChannel.Result) {
+    private fun handleGetIndexedPaths(args: Map<*, *>, result: MethodChannel.Result) {
         try {
-            val month = args["month"] as? Int ?: 1
-            val weekday = args["weekday"] as? Int ?: 1
-            val hour = args["hour"] as? Int ?: 12
             val dataDir = applicationContext.filesDir.absolutePath
-            val module = python.getModule("recommender")
-            val pyResult = module.callAttr("get_recommendations", dataDir, month, weekday, hour)
-
-            val pyList = pyResult?.callAttr("get", "recommendations")?.asList() ?: emptyList<PyObject>()
-            val recommendations = pyList.map { it.toString() }
-
-            val response = mapOf("recommendations" to recommendations)
-            result.success(response)
+            val module = python.getModule("search_engine")
+            val pyResult = module.callAttr("get_indexed_paths", dataDir)
+            val pyList = pyResult?.callAttr("get", "paths")?.asList() ?: emptyList<PyObject>()
+            val paths = pyList.map { it.toString() }
+            result.success(paths)
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting recommendations", e)
-            result.error("RECOMMEND_ERROR", e.message, null)
-        }
-    }
-
-    private fun handleTrainRecommender(args: Map<*, *>, result: MethodChannel.Result) {
-        try {
-            val logPath = args["log_path"] as? String ?: ""
-            val dataDir = applicationContext.filesDir.absolutePath
-            val module = python.getModule("recommender")
-            module.callAttr("train_recommender", dataDir, logPath)
-            val response = mapOf("status" to "trained")
-            result.success(response)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error training recommender", e)
-            result.error("TRAIN_ERROR", e.message, null)
+            Log.e(TAG, "Error getting indexed paths", e)
+            result.error("INDEX_INFO_ERROR", e.message, null)
         }
     }
 
@@ -259,10 +252,8 @@ class MainActivity: FlutterActivity() {
         if (!targetDir.exists()) {
             targetDir.mkdirs()
         }
-
         try {
             val modelFiles = applicationContext.assets.list("models")
-
             if (!modelFiles.isNullOrEmpty()) {
                 for (fileName in modelFiles) {
                     val outFile = File(targetDir, fileName)
@@ -285,45 +276,7 @@ class MainActivity: FlutterActivity() {
         }
     }
 
-    private fun handleGetIndexedPaths(args: Map<*, *>, result: MethodChannel.Result) {
-        try {
-            val dataDir = applicationContext.filesDir.absolutePath
-            val module = python.getModule("search_engine")
-
-            val pyResult = module.callAttr("get_indexed_paths", dataDir)
-
-            // Extract string list safely
-            val pyList = pyResult?.callAttr("get", "paths")?.asList() ?: emptyList<PyObject>()
-            val paths = pyList.map { it.toString() }
-
-            result.success(paths)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting indexed paths", e)
-            result.error("INDEX_INFO_ERROR", e.message, null)
-        }
-    }
-
     private fun getModelDir(): String {
         return File(applicationContext.filesDir, "models").absolutePath
     }
-
-    private fun handleGetSimilarFiles(args: Map<*, *>, result: MethodChannel.Result) {
-        try {
-            val filePath = args["file_path"] as? String ?: ""
-            val dataDir = applicationContext.filesDir.absolutePath
-            val module = python.getModule("search_engine")
-
-            val pyResult = module.callAttr("get_similar_files", dataDir, filePath)
-
-            val pyList = pyResult?.callAttr("get", "results")?.asList() ?: emptyList<PyObject>()
-            val results = pyList.map { it.toString() }
-
-            val response = mapOf("results" to results)
-            result.success(response)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting similar files", e)
-            result.error("SIMILAR_ERROR", e.message, null)
-        }
-    }
 }
-
