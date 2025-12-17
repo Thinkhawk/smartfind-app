@@ -120,3 +120,45 @@ def get_similar_files(app_files_dir, file_path):
     except Exception as e:
         print(f"Similarity Error: {e}")
         return {"results": []}
+
+
+def find_duplicate_clusters(app_files_dir):
+    try:
+        index_path = os.path.join(app_files_dir, "search_index.json")
+        if not os.path.exists(index_path):
+            return {"clusters": []}
+
+        with open(index_path, "r") as f:
+            index_data = json.load(f)
+
+        clusters = []
+        visited = set()
+
+        for i, item_a in enumerate(index_data):
+            path_a = item_a['path']
+            if path_a in visited: continue
+
+            current_cluster = [path_a]
+            vec_a = np.array(item_a['vector'])
+
+            for j in range(i + 1, len(index_data)):
+                item_b = index_data[j]
+                path_b = item_b['path']
+                if path_b in visited: continue
+
+                vec_b = np.array(item_b['vector'])
+                # Cosine similarity
+                score = np.dot(vec_a, vec_b)
+
+                if score > 0.98:  # High threshold for deduplication
+                    current_cluster.append(path_b)
+                    visited.add(path_b)
+
+            if len(current_cluster) > 1:
+                clusters.append(current_cluster)
+                visited.add(path_a)
+
+        return {"clusters": clusters}
+    except Exception as e:
+        print(f"Deduplication logic error: {e}")
+        return {"clusters": []}

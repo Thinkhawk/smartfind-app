@@ -8,6 +8,7 @@ import '../services/platform_service.dart';
 import '../widgets/recommendation_section.dart';
 import '../widgets/tag_gallery.dart';
 import '../widgets/document_card.dart';
+import 'cleanup_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onSearchChanged(String query) {
     final searchProvider = context.read<SearchProvider>();
-    final fileProvider = context.read<FileProvider>(); // Get FileProvider
+    final fileProvider = context.read<FileProvider>();
 
     searchProvider.updateQuery(query);
 
@@ -83,7 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final granted = await fileProvider.requestPermission();
 
     if (!granted) {
-      // Show dialog to open settings
       _showPermissionDialog();
     } else {
       _initializeApp();
@@ -123,10 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset('assets/logo-bgl-nn.png',
-                // Ensure this exists in pubspec.yaml assets
-                width: 50),
-            // const SizedBox(width: 0),
+            Image.asset('assets/logo-bgl-nn.png', width: 50),
             const Text(
               'SmartFind',
               style: TextStyle(
@@ -143,6 +140,35 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: 'Refresh',
           ),
         ],
+      ),
+      drawer: Drawer(
+        child: Column(
+          children: [
+            const SizedBox(height: 60),
+            ListTile(
+              leading: const Icon(Icons.cleaning_services_outlined,
+                  color: Colors.blue),
+              title: const Text('Storage Cleanup'),
+              subtitle: const Text('Remove duplicate files'),
+              onTap: () {
+                Navigator.pop(context); // Close drawer
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const CleanupScreen()),
+                );
+              },
+            ),
+            const Spacer(),
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'Version 1.0.0',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
       ),
       body: Consumer<FileProvider>(
         builder: (context, fileProvider, child) {
@@ -196,7 +222,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        // Show home content
         return RefreshIndicator(
           onRefresh: _initializeApp,
           child: SingleChildScrollView(
@@ -268,19 +293,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final fileProvider = context.read<FileProvider>();
-
     final resultPaths =
         searchProvider.searchResultPaths.map((p) => p.trim()).toSet();
 
-    if (resultPaths.isNotEmpty) {
-      print("DEBUG: UI received ${resultPaths.length} matches from Python.");
-      print("DEBUG: Sample match: ${resultPaths.first}");
-    }
-
     final resultDocs = fileProvider.documents.where((doc) {
-      final normalizedPath = doc.path.trim();
-      final isMatch = resultPaths.contains(normalizedPath);
-      return isMatch;
+      return resultPaths.contains(doc.path.trim());
     }).toList();
 
     if (resultDocs.isEmpty) {
@@ -292,15 +309,6 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 16),
             Text('No results found',
                 style: Theme.of(context).textTheme.titleMedium),
-            if (searchProvider.searchResultPaths.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  "Debug: Python found ${searchProvider.searchResultPaths.length} files, but UI failed to match paths.\nTry restarting the app.",
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
-              ),
           ],
         ),
       );

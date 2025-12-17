@@ -6,11 +6,15 @@ import '../services/native_file_service.dart';
 import '../services/ml_service.dart';
 import '../services/ocr_service.dart';
 import 'recommendation_provider.dart';
+import 'dart:io';
 
 class FileProvider with ChangeNotifier {
   final NativeFileService _fileService = NativeFileService();
   final MLService _mlService = MLService();
   final OcrService _ocrService = OcrService();
+
+  List<List<DocumentModel>> _duplicateClusters = [];
+  List<List<DocumentModel>> get duplicateClusters => _duplicateClusters;
 
   List<DocumentModel> _documents = [];
   bool _isLoading = false;
@@ -152,5 +156,49 @@ class FileProvider with ChangeNotifier {
   void dispose() {
     _ocrService.dispose();
     super.dispose();
+  }
+
+  Future<void> scanForDuplicates() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final List<dynamic> rawClusters = await _mlService.findDuplicateClusters();
+
+      _duplicateClusters = rawClusters.map((paths) {
+        return (paths as List).map((path) => getDocumentByPath(path.toString()))
+            .whereType<DocumentModel>() // Remove nulls if a file was moved
+            .toList();
+      }).toList();
+
+    } catch (e) {
+      print("Error scanning duplicates: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> deleteDocument(DocumentModel doc) async {
+    try {
+      final file = File(doc.path);
+      if (await file.exists()) {
+        await file.delete();
+
+        _documents.removeWhere((item) => item.path == doc.path);
+
+        for (var cluster in _duplicateClusters) {
+          cluster.removeWhere((item) => item.path == doc.path);
+        }
+        _duplicateClusters.removeWhere((cluster) => cluster.length < 2);
+
+        notifyListeners();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print("Failed to delete file: $e");
+      return false;
+    }
   }
 }

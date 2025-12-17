@@ -56,6 +56,19 @@ class MainActivity : FlutterActivity() {
 
                         // Recommendation (Content-Based / P8)
                         "getSimilarFiles" -> handleGetSimilarFiles(call.arguments as Map<*, *>, result)
+                        "findDuplicateClusters" -> {
+                            val dataDir = applicationContext.filesDir.absolutePath
+                            val module = python.getModule("search_engine")
+                            val pyResult = module.callAttr("find_duplicate_clusters", dataDir)
+
+                            // Extract clusters as a list of lists of strings
+                            val pyClusters = pyResult?.callAttr("get", "clusters")?.asList() ?: emptyList<PyObject>()
+                            val resultList = pyClusters.map { cluster ->
+                                cluster.asList().map { it.toString() }
+                            }
+                            result.success(resultList)
+                        }
+
                         else -> result.notImplemented()
                     }
                 } catch (e: Exception) {
