@@ -8,30 +8,60 @@ class RecommendationProvider with ChangeNotifier {
   List<String> _recommendedFilePaths = [];
   bool _isLoading = false;
 
+  // Simple in-memory tracker for the "Efficient Approach"
+  // We recommend based on the last file the user was interested in.
+  String? _lastViewedFilePath;
+
   List<String> get recommendedFilePaths => _recommendedFilePaths;
   bool get isLoading => _isLoading;
 
-  /// Updates recommendations based ONLY on the content of the current document.
+  Future<void> loadRecommendations() async {
+    if (_lastViewedFilePath == null) {
+      _recommendedFilePaths = [];
+      notifyListeners();
+      return;
+    }
+    _isLoading = true;
+    notifyListeners();
+    try {
+      print("DEBUG: Loading Home recommendations based on last viewed: $_lastViewedFilePath");
+      final similarPaths = await _mlService.getSimilarFiles(_lastViewedFilePath!);
+
+      // Filter out the source file itself
+      _recommendedFilePaths = similarPaths
+          .where((path) => path != _lastViewedFilePath)
+          .take(5) // Limit to top 5 for efficiency
+          .toList();
+
+    } catch (e) {
+      print("Error loading home recommendations: $e");
+      _recommendedFilePaths = [];
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Updates recommendations when a specific document is opened.
   Future<void> updateRecommendations(DocumentModel currentDoc) async {
     _isLoading = true;
-    // Notify immediately to show loading spinner in UI if needed
+
+    // 1. Update Session History (The "Efficient" Tracker)
+    _lastViewedFilePath = currentDoc.path;
+
     notifyListeners();
 
     try {
       print("DEBUG: Fetching content-based recommendations for ${currentDoc.name}...");
 
-      // 1. Fetch Content-Based Recommendations (Semantic Similarity)
-      // This calls the Python logic to compare Vector Embeddings
+      // 2. Fetch Content-Based Recommendations (Semantic Similarity)
       final similarPaths = await _mlService.getSimilarFiles(currentDoc.path);
 
-      // 2. Filter Results
-      // Remove the file itself from the list and ensure uniqueness
+      // 3. Filter Results
       _recommendedFilePaths = similarPaths
           .where((path) => path != currentDoc.path)
-          .toSet() // Remove duplicates
+          .toSet()
           .toList();
-
-      print("DEBUG: Content-based results count: ${_recommendedFilePaths.length}");
 
     } catch (e) {
       print('Error updating recommendations: $e');
@@ -42,7 +72,6 @@ class RecommendationProvider with ChangeNotifier {
     }
   }
 
-  /// Clears recommendations (useful when closing a document)
   void clearRecommendations() {
     _recommendedFilePaths = [];
     notifyListeners();
