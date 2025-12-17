@@ -2,15 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/document_model.dart';
 import '../providers/file_provider.dart';
+import '../providers/recommendation_provider.dart';
 import '../services/ml_service.dart';
 
 /// DocumentCard - Displays document information with summary
-///
-/// Shows:
-/// - File name and type
-/// - File size
-/// - Topic tag (if classified)
-/// - Summary (loaded on demand)
 class DocumentCard extends StatefulWidget {
   final DocumentModel document;
 
@@ -30,24 +25,21 @@ class _DocumentCardState extends State<DocumentCard> {
   @override
   void initState() {
     super.initState();
-    // Load summary if not already loaded
     if (widget.document.summary == null) {
       _loadSummary();
     }
   }
 
-  /// Load document summary
   Future<void> _loadSummary() async {
     if (_loadingSummary) return;
 
     setState(() => _loadingSummary = true);
 
     try {
-      // Read file content
-      final content = await _mlService.readFile(widget.document.path);
+      final fileProvider = context.read<FileProvider>();
+      final content = await fileProvider.getFileContent(widget.document);
 
       if (content != null && content.isNotEmpty && mounted) {
-        // Generate summary
         final summary = await _mlService.getSummary(content);
 
         if (summary != null && mounted) {
@@ -56,6 +48,8 @@ class _DocumentCardState extends State<DocumentCard> {
             _loadingSummary = false;
           });
         }
+      } else {
+        if (mounted) setState(() => _loadingSummary = false);
       }
     } catch (e) {
       print('Error loading summary: $e');
@@ -65,7 +59,6 @@ class _DocumentCardState extends State<DocumentCard> {
     }
   }
 
-  /// Get icon for file type
   IconData _getFileIcon(String type) {
     switch (type.toLowerCase()) {
       case 'pdf':
@@ -91,9 +84,17 @@ class _DocumentCardState extends State<DocumentCard> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
+        // --- UPDATED ONTAP HANDLER ---
         onTap: () {
-          context.read<FileProvider>().openDocument(widget.document);
+          // Get both providers
+          final fileProvider = context.read<FileProvider>();
+          final recProvider = context.read<RecommendationProvider>();
+
+          // Pass RecProvider to FileProvider to link the actions
+          fileProvider.openDocument(widget.document, recProvider);
         },
+        // -----------------------------
+
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -127,7 +128,6 @@ class _DocumentCardState extends State<DocumentCard> {
                       ],
                     ),
                   ),
-                  // Topic tag
                   if (widget.document.topicName != null)
                     Chip(
                       label: Text(widget.document.topicName!),

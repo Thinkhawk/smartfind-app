@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import '../models/file_tag_model.dart';
 import '../models/document_model.dart';
@@ -7,40 +9,33 @@ import '../services/ml_service.dart';
 
 /// TagProvider - Manages file-to-topic mappings
 ///
-/// Handles:
-/// - Topic name loading
-/// - File classification
-/// - Tag mapping persistence
-/// - Topic queries
+/// UPDATED: Uses a Pure ML approach. All files are sent to the trained model
+/// for classification. No hardcoded extension rules.
 class TagProvider with ChangeNotifier {
   final MLService _mlService = MLService();
 
   FileTagMapping? _tagMapping;
-  Map<int, String> _topicNames = {};
+  Map<String, String> _topicNames = {};
   bool _isLoading = false;
 
   FileTagMapping? get tagMapping => _tagMapping;
   bool get isLoading => _isLoading;
+
   Set<int> get visibleTopics => _tagMapping?.getVisibleTopics() ?? {};
 
-  /// Initialize with topic names
-  ///
-  /// TODO: Load from assets or backend
-  /// For now, using hardcoded example topics
+  /// Load topic names from local JSON asset
   Future<void> loadTopicNames() async {
-    _topicNames = {
-      0: "Finance",
-      1: "Work",
-      2: "Personal",
-      3: "Research",
-      4: "Health",
-      5: "Education",
-      6: "Travel",
-      7: "Legal",
-      8: "Technology",
-      9: "Entertainment",
-    };
-    notifyListeners();
+    try {
+      // CHANGE THIS LINE: Load from 'assets/models/' where the python script saved it
+      final jsonString = await rootBundle.loadString('assets/models/topic_map.json');
+      final Map<String, dynamic> jsonMap = json.decode(jsonString);
+
+      _topicNames = jsonMap.map((key, value) => MapEntry(key, value.toString()));
+      notifyListeners();
+    } catch (e) {
+      print('Error loading topic map: $e');
+      _topicNames = {"default": "General"};
+    }
   }
 
   /// Load tag mapping from CSV file
@@ -52,14 +47,25 @@ class TagProvider with ChangeNotifier {
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/file_tags.csv');
 
+      // Convert String map to Int map for the FileTagMapping model
+      final Map<int, String> intTopicMap = {};
+      _topicNames.forEach((key, value) {
+        final intKey = int.tryParse(key);
+        if (intKey != null) {
+          intTopicMap[intKey] = value;
+        }
+      });
+
+      // Default fallback
+      intTopicMap[100] = "Others";
+
       if (await file.exists()) {
         final csvContent = await file.readAsString();
-        _tagMapping = FileTagMapping.fromCsv(csvContent, _topicNames);
+        _tagMapping = FileTagMapping.fromCsv(csvContent, intTopicMap);
       } else {
-        // Initialize empty mapping
         _tagMapping = FileTagMapping(
           fileToTopics: {},
-          topicNames: _topicNames,
+          topicNames: intTopicMap,
           topicToFiles: {},
         );
       }
@@ -67,7 +73,7 @@ class TagProvider with ChangeNotifier {
       print('Error loading tag mapping: $e');
       _tagMapping = FileTagMapping(
         fileToTopics: {},
-        topicNames: _topicNames,
+        topicNames: {},
         topicToFiles: {},
       );
     } finally {
@@ -76,60 +82,107 @@ class TagProvider with ChangeNotifier {
     }
   }
 
-  /// Classify and tag a document
+  /// Classify and tag a document using Heuristics first, then ML
   Future<void> classifyAndTagFile(DocumentModel document) async {
+
+    // --- 1. HEURISTIC CHECK (Fast & Accurate for Code) ---
+    final codeExtensions = [
+      'py', 'dart', 'java', 'cpp', 'c', 'h', 'js', 'ts', 'html', 'css',
+      'json', 'xml', 'yaml', 'sh', 'bat', 'sql'
+    ];
+
+    if (codeExtensions.contains(document.type.toLowerCase())) {
+      print("DEBUG: Heuristic match for ${document.name} -> Programming");
+
+      // Find the ID for "Programming" dynamically from the loaded map
+      int? programmingId;
+      _topicNames.forEach((key, value) {
+        if (value == "Programming") {
+          programmingId = int.tryParse(key);
+        }
+      });
+
+      // If we found the ID, use it and SKIP the ML model
+      if (programmingId != null) {
+        _assignToTopic(document, programmingId!);
+        return;
+      }
+    }
+
+    // --- 2. ML CLASSIFICATION (Dynamic) ---
+    // Only runs if the heuristic check failed
     try {
-      // First, read file content
       final content = await _mlService.readFile(document.path);
 
       if (content == null || content.isEmpty) {
-        print('Could not read file: ${document.path}');
+        print("DEBUG: Content empty for ${document.name}. Assigning to Others.");
+        _assignToTopic(document, 100); // 100 = "Others" / Uncategorized
         return;
       }
 
-      // Classify content
+      print("DEBUG: Sending '${document.name}' to ML Classifier...");
+
       final result = await _mlService.classifyFile(content);
+      int topicNumber = result['topic_number'] ?? -1;
+      double confidence = result['confidence'] ?? 0.0;
 
-      if (result.isNotEmpty && result['topic_number'] != -1) {
-        final topicNumber = result['topic_number'] as int;
-        final confidence = result['confidence'] as double;
-
-        // Only tag if confidence is reasonable
-        if (confidence > 0.3) {
-          final topicName = _topicNames[topicNumber] ?? 'Topic $topicNumber';
-
-          // Update document
-          document.topicNumber = topicNumber;
-          document.topicName = topicName;
-
-          // Update mapping
-          _tagMapping?.fileToTopics
-              .putIfAbsent(document.path, () => [])
-              .add(topicNumber);
-          _tagMapping?.topicToFiles
-              .putIfAbsent(topicNumber, () => {})
-              .add(document.path);
-
-          // Save mapping
-          await _saveTagMapping();
-
-          // Index for search
-          await _mlService.indexFile(document.path, content);
-
-          notifyListeners();
-        }
+      // Filter Low Confidence
+      if (topicNumber == -1 || confidence < 0.2) {
+        print("DEBUG: Low confidence ($confidence) for ${document.name}. Tagging as Others.");
+        topicNumber = 100;
+      } else {
+        print("DEBUG: Classified ${document.name} -> Topic $topicNumber ($confidence)");
       }
+
+      _assignToTopic(document, topicNumber);
+
     } catch (e) {
-      print('Error classifying file: $e');
+      print('Error classifying file ${document.name}: $e');
+      _assignToTopic(document, 100);
     }
   }
 
-  /// Save tag mapping to CSV file
+  void _assignToTopic(DocumentModel document, int topicNumber, {String? forceName}) {
+    // 1. Determine Name
+    String topicName;
+
+    if (forceName != null) {
+      topicName = forceName;
+    } else {
+      // Look up the ID in the JSON map we loaded earlier
+      topicName = _topicNames[topicNumber.toString()] ??
+          _topicNames['default'] ??
+          'General';
+    }
+
+    // 2. Update Document Model
+    document.topicNumber = topicNumber;
+    document.topicName = topicName;
+
+    // 3. Update Provider Data (In-Memory)
+    _tagMapping?.fileToTopics
+        .putIfAbsent(document.path, () => [])
+        .add(topicNumber);
+
+    if (_tagMapping?.topicToFiles.containsKey(topicNumber) != true) {
+      _tagMapping?.topicToFiles[topicNumber] = {};
+    }
+    _tagMapping?.topicToFiles[topicNumber]!.add(document.path);
+
+    // Add to internal map if missing (ensures UI shows correct name)
+    if (!_topicNames.containsKey(topicNumber.toString())) {
+      _topicNames[topicNumber.toString()] = topicName;
+    }
+
+    // 4. Persist to Storage
+    _saveTagMapping();
+    notifyListeners();
+  }
+
   Future<void> _saveTagMapping() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/file_tags.csv');
-
       final csvContent = _tagMapping?.toCsv() ?? 'file_path,topic_number\n';
       await file.writeAsString(csvContent);
     } catch (e) {
@@ -137,17 +190,14 @@ class TagProvider with ChangeNotifier {
     }
   }
 
-  /// Get files for a specific topic
   List<String> getFilesForTopic(int topicNumber) {
     return _tagMapping?.getFilesForTopic(topicNumber) ?? [];
   }
 
-  /// Get topic name by number
-  String? getTopicName(int topicNumber) {
-    return _topicNames[topicNumber];
+  String getTopicName(int topicNumber) {
+    return _topicNames[topicNumber.toString()] ?? 'General';
   }
 
-  /// Get file count for topic
   int getTopicFileCount(int topicNumber) {
     return _tagMapping?.getTopicFileCount(topicNumber) ?? 0;
   }

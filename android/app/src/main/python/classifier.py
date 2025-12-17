@@ -1,82 +1,83 @@
-"""
-Top2Vec-based classifier with fallback to keyword matching
-"""
 import os
-import pickle
+import json
+import numpy as np
+import re
 
+# Global Cache
+_vocab = None
+_word_vectors = None
+_topic_vectors = None
 
-def classify_file(model_path, text):
-    """Classify document using Top2Vec model, fallback to keywords"""
-    try:
-        # Validate input
-        if not text or len(text.strip()) < 10:
-            return {"topic_number": -1, "confidence": 0.0}
+# MATCHING STOPWORDS LIST (Critical for accuracy)
+STOPWORDS = {
+    'the', 'and', 'to', 'of', 'a', 'in', 'is', 'that', 'for', 'it', 'on', 'with', 'as',
+    'was', 'at', 'by', 'an', 'be', 'this', 'which', 'or', 'from', 'but', 'not', 'are',
+    'your', 'all', 'have', 'new', 'more', 'an', 'was', 'we', 'will', 'home', 'can',
+    'us', 'about', 'if', 'page', 'my', 'has', 'search', 'free', 'but', 'our', 'one',
+    'other', 'do', 'no', 'information', 'time', 'they', 'site', 'he', 'up', 'may',
+    'what', 'which', 'their', 'news', 'out', 'use', 'any', 'there', 'see', 'only',
+    'so', 'his', 'when', 'contact', 'here', 'business', 'who', 'web', 'also', 'now',
+    'help', 'get', 'pm', 'view', 'online', 'c', 'e', 'first', 'am', 'been', 'would',
+    'how', 'were', 'me', 's', 'services', 'some', 'these', 'click', 'its', 'like',
+    'service', 'x', 'than', 'find', 'price', 'date', 'back', 'top', 'people', 'had',
+    'list', 'name', 'just', 'over', 'state', 'year', 'day', 'into', 'email', 'two',
+    'health', 'n', 'world', 're', 'next', 'used', 'go', 'b', 'work', 'last', 'most'
+}
 
-        # Try to load pickled Top2Vec model
-        if os.path.exists(model_path):
-            try:
-                with open(model_path, 'rb') as f:
-                    model = pickle.load(f)
+def load_resources(asset_path):
+    global _vocab, _word_vectors, _topic_vectors
+    if _vocab is None:
+        try:
+            print(f"DEBUG: Loading model from {asset_path}...")
+            with open(os.path.join(asset_path, "vocab.json"), "r") as f:
+                _vocab = json.load(f)
+            _word_vectors = np.load(os.path.join(asset_path, "word_vectors.npy"))
+            _topic_vectors = np.load(os.path.join(asset_path, "topic_vectors.npy"))
+            return True
+        except Exception as e:
+            print(f"CRITICAL ERROR loading model: {e}")
+            return False
+    return True
 
-                # Query topics for the text
-                topic_data = model.query_topics(text, num_topics=1)
+def simple_preprocess(text):
+    """Tokenize and REMOVE STOPWORDS"""
+    # 1. Split by non-word characters
+    tokens = re.findall(r'\b[a-z]{3,}\b', text.lower())
+    # 2. Filter out stopwords (The fix!)
+    return [t for t in tokens if t not in STOPWORDS]
 
-                if topic_data and len(topic_data) > 0:
-                    topic_number = int(topic_data[0][0]) if topic_data[0] else -1
-                    distance = topic_data[1][0] if len(topic_data) > 1 and topic_data[1] else 1.0
-                    confidence = max(0.0, 1.0 - distance)
-                    confidence = min(confidence, 1.0)
+def infer_vector_manual(words):
+    global _vocab, _word_vectors
+    vectors = []
+    for word in words:
+        if word in _vocab:
+            idx = _vocab[word]
+            vectors.append(_word_vectors[idx])
 
-                    return {
-                        "topic_number": topic_number,
-                        "confidence": confidence
-                    }
-            except Exception as e:
-                print(f"Error loading/querying model: {e}")
+    if not vectors: return None
+    return np.mean(vectors, axis=0)
 
-        # FALLBACK: Keyword-based classification when model not found
-        print(f"Model not found at {model_path}. Using keyword-based classifier.")
-        return classify_with_keywords(text)
-
-    except Exception as e:
-        print(f"Classification error: {e}")
+def classify_file(asset_path, text_content):
+    if not text_content or len(text_content.strip()) < 5:
         return {"topic_number": -1, "confidence": 0.0}
 
-
-def classify_with_keywords(text):
-    """Fallback: Simple keyword-based classification"""
-    try:
-        if not text or len(text.strip()) < 10:
-            return {"topic_number": -1, "confidence": 0.0}
-
-        text_lower = text.lower()
-
-        # Define categories with keywords
-        categories = {
-            0: (["finance", "money", "budget", "payment", "invoice", "expense", "account", "bank"], "Finance"),
-            1: (["work", "project", "task", "meeting", "deadline", "report", "email", "client"], "Work"),
-            2: (["personal", "diary", "private", "note", "memo", "reminder", "family", "friend"], "Personal"),
-            3: (["research", "paper", "study", "analysis", "data", "experiment", "theory", "result"], "Research"),
-        }
-
-        scores = {}
-        for topic_num, (keywords, name) in categories.items():
-            matches = sum(1 for kw in keywords if kw in text_lower)
-            if matches > 0:
-                # Score: matches divided by total keywords
-                scores[topic_num] = min(matches / len(keywords), 1.0)
-
-        if not scores:
-            # No matches found
-            return {"topic_number": -1, "confidence": 0.0}
-
-        # Return best matching topic
-        best_topic = max(scores.items(), key=lambda x: x[1])
-        return {
-            "topic_number": best_topic[0],
-            "confidence": best_topic[1]
-        }
-
-    except Exception as e:
-        print(f"Keyword classification error: {e}")
+    if not load_resources(asset_path):
         return {"topic_number": -1, "confidence": 0.0}
+
+    tokens = simple_preprocess(text_content)
+    if not tokens:
+        return {"topic_number": -1, "confidence": 0.0}
+
+    doc_vector = infer_vector_manual(tokens)
+    if doc_vector is None:
+        return {"topic_number": -1, "confidence": 0.0}
+
+    norm_doc = np.linalg.norm(doc_vector)
+    if norm_doc == 0: return {"topic_number": -1, "confidence": 0.0}
+
+    scores = np.dot(_topic_vectors, doc_vector) / (np.linalg.norm(_topic_vectors, axis=1) * norm_doc)
+    best_topic_id = int(np.argmax(scores))
+    confidence = float(scores[best_topic_id])
+
+    print(f"DEBUG: Classified as Topic {best_topic_id} with conf {confidence:.2f}")
+    return {"topic_number": best_topic_id, "confidence": confidence}

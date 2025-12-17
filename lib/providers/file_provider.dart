@@ -4,17 +4,16 @@ import 'package:open_file/open_file.dart';
 import '../models/document_model.dart';
 import '../services/native_file_service.dart';
 import '../services/file_access_logger.dart';
+import '../services/ml_service.dart';
+import '../services/ocr_service.dart';
+// Import RecommendationProvider to use it in openDocument
+import 'recommendation_provider.dart';
 
-/// FileProvider - Manages document scanning and access
-///
-/// Handles:
-/// - Permission checking
-/// - File scanning
-/// - File opening
-/// - Access logging
 class FileProvider with ChangeNotifier {
   final NativeFileService _fileService = NativeFileService();
   final FileAccessLogger _logger = FileAccessLogger();
+  final MLService _mlService = MLService();
+  final OcrService _ocrService = OcrService();
 
   List<DocumentModel> _documents = [];
   bool _isLoading = false;
@@ -26,13 +25,25 @@ class FileProvider with ChangeNotifier {
   bool get hasPermission => _hasPermission;
   String? get errorMessage => _errorMessage;
 
-  /// Initialize provider
   Future<void> initialize() async {
     await _logger.initialize();
     await checkPermissions();
   }
 
-  /// Check storage permissions
+  /// SMART READ METHOD: Used by Search AND Summarizer
+  Future<String?> getFileContent(DocumentModel doc) async {
+    try {
+      if (_isImage(doc.type)) {
+        return await _ocrService.extractText(doc.path);
+      } else {
+        return await _mlService.readFile(doc.path);
+      }
+    } catch (e) {
+      print("Error reading content for ${doc.name}: $e");
+      return null;
+    }
+  }
+
   Future<void> checkPermissions() async {
     try {
       final status = await Permission.manageExternalStorage.status;
@@ -45,7 +56,6 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Request storage permission
   Future<bool> requestPermission() async {
     try {
       final status = await Permission.manageExternalStorage.request();
@@ -60,7 +70,6 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Load all documents from file system
   Future<void> loadDocuments() async {
     if (!_hasPermission) {
       _errorMessage = 'Storage permission not granted';
@@ -69,12 +78,12 @@ class FileProvider with ChangeNotifier {
     }
 
     _isLoading = true;
-    _errorMessage = null;
     notifyListeners();
 
     try {
       _documents = await _fileService.scanDocuments();
       _errorMessage = null;
+      await _processAndTrain();
     } catch (e) {
       _errorMessage = 'Error loading documents: $e';
       print(_errorMessage);
@@ -84,20 +93,58 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Open document with default app
-  Future<void> openDocument(DocumentModel document) async {
+  Future<void> _processAndTrain() async {
+    final Map<String, String> corpus = {};
+    print("DEBUG: Extracting content for ${documents.length} files...");
+
+    for (final doc in _documents) {
+      try {
+        final content = await getFileContent(doc);
+
+        if (content != null && content.isNotEmpty) {
+          // --- SIGNAL BOOSTING ---
+          String metaTags = "${doc.name} ${doc.name} ${doc.name} ${doc.type} ${doc.type}";
+
+          if (_isImage(doc.type)) {
+            metaTags += " image image image picture photo";
+          } else if (doc.type == 'pdf' || doc.type == 'docx') {
+            metaTags += " document paper file";
+          }
+
+          corpus[doc.path] = "$metaTags \n $content";
+        }
+      } catch (e) {
+        print("DEBUG: Failed to process ${doc.path}: $e");
+      }
+    }
+
+    if (corpus.isNotEmpty) {
+      await _mlService.trainSearchIndex(corpus);
+    }
+  }
+
+  bool _isImage(String extension) {
+    return ['jpg', 'jpeg', 'png', 'bmp', 'tiff'].contains(extension.toLowerCase());
+  }
+
+  /// UPDATED openDocument: Accepts RecommendationProvider to trigger updates
+  Future<void> openDocument(DocumentModel document, RecommendationProvider recProvider) async {
     try {
-      // Log access
+      // 1. Log the access for time-based history
       await _logger.logAccess(document);
 
-      // Open file
+      // 2. TRIGGER RECOMMENDATION UPDATE
+      // We await this so the UI updates while the file is opening or immediately after.
+      // Doing it here ensures the "Recommended" section is fresh when the user returns.
+      recProvider.updateRecommendations(document);
+
+      // 3. Open the file externally
       await OpenFile.open(document.path);
     } catch (e) {
       print('Error opening document: $e');
     }
   }
 
-  /// Get document by path
   DocumentModel? getDocumentByPath(String path) {
     try {
       return _documents.firstWhere((doc) => doc.path == path);
@@ -106,13 +153,17 @@ class FileProvider with ChangeNotifier {
     }
   }
 
-  /// Refresh document list
   Future<void> refresh() async {
     await loadDocuments();
   }
 
-  /// Get access log path for training
   Future<String> getAccessLogPath() async {
     return await _logger.getLogPath();
+  }
+
+  @override
+  void dispose() {
+    _ocrService.dispose();
+    super.dispose();
   }
 }
