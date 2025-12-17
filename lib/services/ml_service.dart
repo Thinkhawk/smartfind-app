@@ -17,26 +17,20 @@ class MLService {
 
     // List of ALL files to copy
     final assets = [
-      'vocab.json',         // <--- Critical
-      'word_vectors.npy',   // <--- Critical
+      'vocab.json',
+      'word_vectors.npy',
       'topic_vectors.npy',
       'topic_words.npy',
-      // 'doc2vec_lite.model', // Legacy, optional
     ];
 
     for (String assetName in assets) {
       final targetPath = '${modelsDir.path}/$assetName';
-
       try {
-        // We use rootBundle to read from assets/models/
         final data = await rootBundle.load('assets/models/$assetName');
         final bytes = data.buffer.asUint8List();
-
-        // Write to device storage
         await File(targetPath).writeAsBytes(bytes, flush: true);
-        print('DEBUG: Successfully copied asset: $assetName to $targetPath');
+        print('DEBUG: Successfully copied asset: $assetName');
       } catch (e) {
-        // Don't crash if an optional file is missing, but warn
         print('WARNING: Failed to copy asset $assetName: $e');
       }
     }
@@ -92,7 +86,6 @@ class MLService {
     }
   }
 
-  /// RESTORED: Add single document to search index
   Future<void> indexFile(String filePath, String content) async {
     try {
       await _channel.invokeMethod('addToIndex', {
@@ -104,7 +97,6 @@ class MLService {
     }
   }
 
-  /// RESTORED: Get list of indexed paths
   Future<List<String>> getIndexedPaths() async {
     try {
       final List<dynamic> result = await _channel.invokeMethod('getIndexedPaths', {});
@@ -115,37 +107,16 @@ class MLService {
     }
   }
 
-  // --- Recommendation & Similarity ---
+  // --- Content-Based Similarity Only ---
 
-  Future<List<String>> getRecommendations() async {
-    try {
-      final now = DateTime.now();
-      final result = await _channel.invokeMethod('getRecommendations', {
-        'month': now.month,
-        'weekday': now.weekday,
-        'hour': now.hour,
-      });
-      return List<String>.from(result['recommendations']);
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<void> trainRecommendationModel(String logPath) async {
-    try {
-      await _channel.invokeMethod('trainRecommender', {'log_path': logPath});
-    } catch (e) {
-      print('Training error: $e');
-    }
-  }
-
-  /// RESTORED: Get similar files (Fixes your build error)
+  /// Finds files that are semantically similar to the provided file path.
+  /// Uses Vector Embeddings (Word2Vec/Doc2Vec) via Python backend.
   Future<List<String>> getSimilarFiles(String filePath) async {
     try {
       final result = await _channel.invokeMethod('getSimilarFiles', {
         'file_path': filePath,
       });
-      // Safety check if result is null or missing key
+      // Safety check
       if (result == null || result['results'] == null) return [];
       return List<String>.from(result['results']);
     } catch (e) {
