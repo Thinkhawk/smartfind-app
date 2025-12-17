@@ -3,9 +3,20 @@ import 'package:path/path.dart' as path;
 import '../models/document_model.dart';
 
 class NativeFileService {
+  // UPDATED: Added programming and code extensions
   static const List<String> _supportedExtensions = [
-    'pdf', 'doc', 'docx', 'txt', 'md',
-    'jpg', 'jpeg', 'png', 'bmp', 'tiff'
+    // Documents
+    'pdf', 'doc', 'docx', 'txt', 'md', 'csv',
+
+    // Images
+    'jpg', 'jpeg', 'png', 'bmp', 'tiff',
+
+    // Code / Programming
+    'py', 'dart', 'java', 'kt', 'swift', // Languages
+    'c', 'cpp', 'h', 'cs',               // C/C++/C#
+    'js', 'ts', 'html', 'css',           // Web
+    'json', 'xml', 'yaml', 'yml',        // Data/Config
+    'sql', 'sh', 'bat', 'properties', 'gradle'
   ];
 
   List<String> get _documentPaths => [
@@ -48,7 +59,6 @@ class NativeFileService {
   Future<DocumentModel?> _createDocumentModel(File file) async {
     try {
       final fileName = path.basename(file.path);
-      // Handle files with no extension
       if (!fileName.contains('.')) return null;
 
       final extension = path.extension(fileName).replaceFirst('.', '').toLowerCase();
@@ -70,6 +80,4 @@ class NativeFileService {
       return null;
     }
   }
-
-// ... keep other methods ...
 }

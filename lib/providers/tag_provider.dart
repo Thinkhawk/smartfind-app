@@ -82,12 +82,35 @@ class TagProvider with ChangeNotifier {
     }
   }
 
-  /// Classify and tag a document using purely the ML Model
+  /// Classify and tag a document using Heuristics first, then ML
   Future<void> classifyAndTagFile(DocumentModel document) async {
 
-    // --- ML CLASSIFICATION (Dynamic) ---
-    // We send the content to Python. The Python 'classifier.py' script
-    // uses the trained model (vectors) to decide the topic.
+    // --- 1. HEURISTIC CHECK (Fast & Accurate for Code) ---
+    final codeExtensions = [
+      'py', 'dart', 'java', 'cpp', 'c', 'h', 'js', 'ts', 'html', 'css',
+      'json', 'xml', 'yaml', 'sh', 'bat', 'sql'
+    ];
+
+    if (codeExtensions.contains(document.type.toLowerCase())) {
+      print("DEBUG: Heuristic match for ${document.name} -> Programming");
+
+      // Find the ID for "Programming" dynamically from the loaded map
+      int? programmingId;
+      _topicNames.forEach((key, value) {
+        if (value == "Programming") {
+          programmingId = int.tryParse(key);
+        }
+      });
+
+      // If we found the ID, use it and SKIP the ML model
+      if (programmingId != null) {
+        _assignToTopic(document, programmingId!);
+        return;
+      }
+    }
+
+    // --- 2. ML CLASSIFICATION (Dynamic) ---
+    // Only runs if the heuristic check failed
     try {
       final content = await _mlService.readFile(document.path);
 
@@ -103,9 +126,8 @@ class TagProvider with ChangeNotifier {
       int topicNumber = result['topic_number'] ?? -1;
       double confidence = result['confidence'] ?? 0.0;
 
-      // Filter Low Confidence if necessary
+      // Filter Low Confidence
       if (topicNumber == -1 || confidence < 0.2) {
-        // 0.2 is an example threshold. Adjust based on your model's performance.
         print("DEBUG: Low confidence ($confidence) for ${document.name}. Tagging as Others.");
         topicNumber = 100;
       } else {
@@ -116,7 +138,7 @@ class TagProvider with ChangeNotifier {
 
     } catch (e) {
       print('Error classifying file ${document.name}: $e');
-      _assignToTopic(document, 100); // Fail gracefully to Others
+      _assignToTopic(document, 100);
     }
   }
 

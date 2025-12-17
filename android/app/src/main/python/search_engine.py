@@ -84,7 +84,6 @@ def search_documents(app_files_dir, query):
         print(f"Search Error: {e}")
         return {"results": []}
 
-# --- ADDED THIS FUNCTION ---
 def get_similar_files(app_files_dir, file_path):
     """
     Finds files semantically similar to the given file path.

@@ -1,5 +1,5 @@
 """
-Read file content (supports PDF, DOCX, TXT) with robust error logging
+Read file content (supports PDF, DOCX, TXT, Code) with robust error logging
 """
 import os
 import traceback
@@ -58,10 +58,17 @@ def read_file(file_path):
                 traceback.print_exc()
                 return {"content": ""}
 
-        # Text/Code files
-        elif file_path.lower().endswith(('.txt', '.md', '.py', '.dart', '.xml', '.json')):
+        # Text/Code files - UPDATED LIST
+        elif file_path.lower().endswith((
+                '.txt', '.md', '.csv',
+                '.py', '.dart', '.java', '.kt', '.swift',
+                '.c', '.cpp', '.h', '.cs',
+                '.js', '.ts', '.html', '.css',
+                '.json', '.xml', '.yaml', '.yml',
+                '.sql', '.properties', '.gradle', '.sh', '.bat'
+        )):
             try:
-                print("DEBUG: Reading as text file...")
+                print("DEBUG: Reading as text/code file...")
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
                     print(f"DEBUG: Extracted {len(content)} chars")
@@ -70,7 +77,7 @@ def read_file(file_path):
                 print(f"DEBUG: Text reading error: {e}")
                 return {"content": ""}
 
-        # Images/Other (Just return empty for now, unless OCR is added)
+        # Images/Other (OCR handled in Dart)
         else:
             print(f"DEBUG: Unsupported file type for text extraction: {file_path}")
             return {"content": ""}

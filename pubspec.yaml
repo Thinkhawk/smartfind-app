@@ -27,17 +27,24 @@ dependencies:
 
   # HTTP requests (for remote API calls if needed)
   http: ^1.1.0
-
   google_mlkit_text_recognition: ^0.13.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
+  flutter_launcher_icons: ^0.13.1
   flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/models/
+    - assets/
+
+flutter_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/logo-big.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
 

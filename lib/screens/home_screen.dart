@@ -137,7 +137,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SmartFind'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/logo-bgl-nn.png', // Ensure this exists in pubspec.yaml assets
+              width: 50
+            ),
+            // const SizedBox(width: 0),
+            const Text(
+              'SmartFind',
+              style: TextStyle(fontWeight: FontWeight.bold,fontSize: 26,color: Color.fromRGBO(117, 70, 202, .8)),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
