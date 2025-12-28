@@ -10,24 +10,15 @@ import 'providers/recommendation_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize ML Assets (Copy models to storage)
   final mlService = MLService();
   await mlService.initialize();
 
   runApp(const SmartFindApp());
 }
 
-/// SmartFindApp - Root application widget
-///
-/// Sets up:
-/// - Multi-provider state management
-/// - Material theme
-/// - Navigation
 class SmartFindApp extends StatelessWidget {
   const SmartFindApp({super.key});
 
-  // TODO: Replace this with the dominant color from your new logo
-  // Example: If your logo is Blue, use Color(0xFF2196F3)
   static const Color _brandColor = Color.fromRGBO(117, 70, 202, 1);
 
   @override
@@ -43,7 +34,6 @@ class SmartFindApp extends StatelessWidget {
         title: 'SmartFind',
         debugShowCheckedModeBanner: false,
 
-        // LIGHT THEME (Auto-generated from your brand color)
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
             seedColor: _brandColor,
@@ -53,15 +43,15 @@ class SmartFindApp extends StatelessWidget {
           fontFamily: 'Inter',
           appBarTheme: const AppBarTheme(
             elevation: 0,
-            scrolledUnderElevation: 0, // Keeps flat look when scrolling
-            backgroundColor: Colors.white, // Clean white header
+            scrolledUnderElevation: 0,
+            backgroundColor: Colors.white,
           ),
           cardTheme: CardThemeData(
-            elevation: 0, // Modern flat look
+            elevation: 0,
             color: Colors.grey.shade50,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16), // Softer corners
-              side: BorderSide(color: Colors.grey.shade200), // Subtle border
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.shade200),
             ),
           ),
           inputDecorationTheme: InputDecorationTheme(
@@ -75,7 +65,6 @@ class SmartFindApp extends StatelessWidget {
           ),
         ),
 
-        // DARK THEME
         darkTheme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
             seedColor: _brandColor,

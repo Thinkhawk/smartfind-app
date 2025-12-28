@@ -16,7 +16,6 @@ if PYTHON_SOURCE_DIR not in sys.path:
 import search_engine
 
 def setup_test_environment(test_dir):
-    """Copies model assets to the temp directory so search_engine can find them"""
     models_dir = os.path.join(test_dir, "models")
     if not os.path.exists(models_dir):
         os.makedirs(models_dir)
@@ -66,7 +65,6 @@ def test_search_real_data():
                         mrr_sum += (1.0 / (i + 1))
                         break
 
-        # RETURN metrics instead of just printing
         return {
             "docs": len(documents),
             "success": f"{hits}/{len(queries)}",

@@ -189,7 +189,4 @@ def main():
     with open(os.path.join(OUTPUT_DIR, "topic_map.json"), "w", encoding="utf-8") as f:
         json.dump(topic_map, f, indent=2)
 
-    print("\n✅ DONE! Assets generated. Run 'flutter clean' and 'flutter run'.")
-
-if __name__ == "__main__":
-    main()
+main()

@@ -9,10 +9,8 @@ from sklearn.metrics import accuracy_score, matthews_corrcoef, f1_score
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy import spatial
 
-# --- SETUP PATHS ---
 PROJECT_ROOT = os.getcwd()
 PYTHON_SOURCE_DIR = os.path.join(PROJECT_ROOT, "android/app/src/main/python")
-# Ensure local test scripts and python modules are in the path
 sys.path.extend([PROJECT_ROOT, os.path.dirname(__file__), PYTHON_SOURCE_DIR])
 
 import classifier
@@ -25,7 +23,6 @@ TOPIC_MAP_PATH = os.path.join(ASSETS_DIR, "topic_map.json")
 classifier.load_resources(ASSETS_DIR)
 
 class TechnicalDashboard:
-    """Generates a professional project evaluation report from dynamic data"""
     def __init__(self):
         self.sections = {}
 
@@ -36,7 +33,6 @@ class TechnicalDashboard:
 
         if section not in self.sections: self.sections[section] = []
 
-        # Fixed logic: Only format as % if is_percent is True AND value is a float <= 1.0
         if is_percent and isinstance(value, float) and value <= 1.0:
             val_str = f"{value:.2%}"
         elif isinstance(value, (float, int)):
