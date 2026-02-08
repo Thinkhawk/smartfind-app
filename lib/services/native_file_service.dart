@@ -80,4 +80,18 @@ class NativeFileService {
       return null;
     }
   }
+
+  Future<bool> deleteFile(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete(); // Physically remove from Android storage
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Error deleting file: $e');
+      return false;
+    }
+  }
 }

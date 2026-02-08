@@ -47,8 +47,10 @@ class MLService {
 
   Future<String?> getSummary(String text) async {
     try {
-      final result =
-          await _channel.invokeMethod('summarizeFile', {'text': text});
+      final result = await _channel.invokeMethod('summarizeFile', {'text': text});
+      if (result['summary'] == "ERROR_TOO_SHORT") {
+        return "This document is too short to summarize.";
+      }
       return result['summary'] as String?;
     } catch (e) {
       return null;
@@ -116,6 +118,17 @@ class MLService {
     } catch (e) {
       print('Similarity error: $e');
       return [];
+    }
+  }
+
+  Future<void> removeFromIndex(String filePath) async {
+    try {
+      await _channel.invokeMethod('removeFromIndex', {
+        'file_path': filePath,
+      });
+      print("DEBUG: Triggered index removal for $filePath");
+    } catch (e) {
+      print('Error triggering index removal: $e');
     }
   }
 }

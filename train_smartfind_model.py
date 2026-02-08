@@ -5,11 +5,9 @@ import re
 from gensim.models import Word2Vec
 from sklearn.datasets import fetch_20newsgroups
 
-# --- CONFIGURATION ---
 OUTPUT_DIR = "assets/models"
 MODEL_DIMENSIONS = 100
 
-# Hardcoded stopwords to match Android inference exactly
 STOPWORDS = {
     'the', 'and', 'to', 'of', 'a', 'in', 'is', 'that', 'for', 'it', 'on', 'with', 'as',
     'was', 'at', 'by', 'an', 'be', 'this', 'which', 'or', 'from', 'but', 'not', 'are',
@@ -25,7 +23,6 @@ STOPWORDS = {
     'health', 'n', 'world', 're', 'next', 'used', 'go', 'b', 'work', 'last', 'most'
 }
 
-# Map 20 Newsgroups data to our Mobile Categories
 CATEGORY_MAPPING = {
     'comp.graphics': 'Technology',
     'comp.os.ms-windows.misc': 'Technology',
@@ -33,15 +30,15 @@ CATEGORY_MAPPING = {
     'comp.sys.mac.hardware': 'Technology',
     'comp.windows.x': 'Programming',
     'misc.forsale': 'Business',
-    'rec.autos': 'Automotive',      # Mapped to new category
-    'rec.motorcycles': 'Automotive',# Mapped to new category
+    'rec.autos': 'Automotive',
+    'rec.motorcycles': 'Automotive',
     'rec.sport.baseball': 'Sports',
     'rec.sport.hockey': 'Sports',
-    'sci.crypt': 'Technology',      # Security often falls under Tech for personal files
+    'sci.crypt': 'Technology',
     'sci.electronics': 'Technology',
     'sci.med': 'Health',
     'sci.space': 'Science',
-    'soc.religion.christian': 'Personal', # Religion -> Personal
+    'soc.religion.christian': 'Personal',
     'talk.politics.guns': 'Politics',
     'talk.politics.mideast': 'Politics',
     'talk.politics.misc': 'Politics',

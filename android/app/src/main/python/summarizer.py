@@ -3,97 +3,99 @@ import numpy as np
 import networkx as nx
 from gensim.utils import simple_preprocess
 
+# Robust set of stopwords to filter noise during similarity analysis
+STOPWORDS = {
+    'the', 'and', 'of', 'to', 'a', 'in', 'is', 'that', 'for', 'it', 'on',
+    'with', 'as', 'are', 'was', 'this', 'by', 'be', 'at', 'or', 'from',
+    'an', 'not', 'but', 'can', 'if', 'we', 'has', 'have', 'which', 'their',
+    'will', 'its', 'about', 'would', 'there', 'so', 'what', 'who', 'when',
+    'they', 'he', 'she', 'his', 'her', 'been', 'had', 'were', 'one', 'all',
+    'you', 'your', 'my', 'our', 'me', 'us', 'him', 'them', 'page', 'pdf', 'file'
+}
 
-def cosine_similarity(v1, v2):
-    dot_product = np.dot(v1, v2)
-    norm_v1 = np.linalg.norm(v1)
-    norm_v2 = np.linalg.norm(v2)
-    if norm_v1 == 0 or norm_v2 == 0:
-        return 0.0
-    return dot_product / (norm_v1 * norm_v2)
-
-
-def sentence_similarity(sent1, sent2, stopwords=None):
-    if stopwords is None:
-        stopwords = set()
-
-    words1 = [w.lower() for w in sent1 if w.lower() not in stopwords]
-    words2 = [w.lower() for w in sent2 if w.lower() not in stopwords]
-
-    all_words = list(set(words1 + words2))
-
-    vector1 = [0] * len(all_words)
-    vector2 = [0] * len(all_words)
-
-    for w in words1:
-        vector1[all_words.index(w)] += 1
-
-    for w in words2:
-        vector2[all_words.index(w)] += 1
-
-    return 1 - cosine_similarity(vector1, vector2)
-
-
-def summarize_file(text, max_sentences=5):
+def summarize_file(text, max_sentences=3):
+    """
+    Main entry point called by the Android MethodChannel.
+    Extracts the middle portion of a document and performs TextRank summarization.
+    """
     try:
-        if not text or len(text.strip()) < 50:
-            return {"summary": text[:500]}
+        # 1. Initial Length Check: Skip if text is extremely sparse
+        if not text or len(text.strip()) < 100:
+            return {"summary": "ERROR_TOO_SHORT"}
 
-        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', text)
-        sentences = [s.strip() for s in sentences if len(s.split()) > 4]  # Filter tiny sentences
+        # 2. Sentence Splitting
+        # Uses regex to split on punctuation while ignoring acronyms (e.g., U.S.A.)
+        raw_sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', text)
 
-        if len(sentences) <= max_sentences:
-            return {"summary": " ".join(sentences)}
+        # Filter: Only keep sentences with > 5 words to remove fragments and headers
+        # This prevents the "of the and" issue by ignoring noise
+        sentences = [s.strip() for s in raw_sentences if len(s.split()) > 5]
 
-        sentence_tokens = [simple_preprocess(s) for s in sentences]
+        # 3. Target the Middle Portion
+        # This skips intro pages (Title, Index) and concluding noise (References)
+        total_sents = len(sentences)
+        if total_sents > 10:
+            # Slice the document to keep the middle 70% (Skip 15% at each end)
+            start_idx = int(total_sents * 0.15)
+            end_idx = int(total_sents * 0.85)
+            target_sentences = sentences[start_idx:end_idx]
+        else:
+            target_sentences = sentences
 
-        sim_mat = np.zeros([len(sentences), len(sentences)])
+        # 4. Threshold Check: Ensure we have enough sentences to summarize meaningfully
+        if len(target_sentences) <= max_sentences:
+            return {"summary": "ERROR_TOO_SHORT"}
 
-        stopwords = {
-            'the', 'and', 'of', 'to', 'a', 'in', 'is', 'that', 'for', 'it', 'on',
-            'with', 'as', 'are', 'was', 'this', 'by', 'be', 'at', 'or', 'from',
-            'an', 'not', 'but', 'can', 'if', 'we', 'has', 'have', 'which', 'their',
-            'will', 'its', 'about', 'would', 'there', 'so', 'what', 'who', 'when',
-            'they', 'he', 'she', 'his', 'her', 'been', 'had', 'were', 'one', 'all',
-            'you', 'your', 'my', 'our', 'me', 'us', 'him', 'them'
-        }
+        # 5. Preprocessing for Similarity Graph
+        # Extract meaningful tokens (excluding stopwords) for each sentence
+        sentence_tokens = []
+        for s in target_sentences:
+            tokens = simple_preprocess(s)
+            meaningful = set(w for w in tokens if w not in STOPWORDS)
+            sentence_tokens.append(meaningful)
 
-        for i in range(len(sentences)):
-            for j in range(len(sentences)):
+        num_sents = len(target_sentences)
+        sim_mat = np.zeros([num_sents, num_sents])
+
+        # 6. Build Similarity Matrix (The "Connections")
+        for i in range(num_sents):
+            for j in range(num_sents):
                 if i != j:
-                    set_i = set(w for w in sentence_tokens[i] if w not in stopwords)
-                    set_j = set(w for w in sentence_tokens[j] if w not in stopwords)
+                    set_i = sentence_tokens[i]
+                    set_j = sentence_tokens[j]
 
                     if not set_i or not set_j:
-                        sim_mat[i][j] = 0.0
                         continue
 
+                    # Calculate overlap similarity normalized by sentence length log
                     intersection = len(set_i.intersection(set_j))
                     log_len = np.log(len(set_i)) + np.log(len(set_j))
 
-                    if log_len == 0:
-                        sim_mat[i][j] = 0.0
-                    else:
+                    if log_len > 0:
                         sim_mat[i][j] = intersection / log_len
 
+        # 7. Run PageRank (TextRank Algorithm)
         nx_graph = nx.from_numpy_array(sim_mat)
+        scores = nx.pagerank(nx_graph, max_iter=100)
 
-        scores = nx.pagerank(nx_graph)
+        # 8. Rank and Select Top Sentences
+        # Pair importance scores with original indices in the target list
+        ranked_sentences = sorted(((scores[i], i) for i in range(num_sents)), reverse=True)
 
-        ranked_sentences = sorted(((scores[i], s) for i, s in enumerate(sentences)), reverse=True)
+        # Extract indices of the top N sentences
+        top_indices = [idx for score, idx in ranked_sentences[:max_sentences]]
 
-        # Get top N
-        top_sentences_list = [s[1] for s in ranked_sentences[:max_sentences]]
+        # Restore chronological order for logical readability
+        top_indices.sort()
 
-        final_summary_sentences = []
-        for sent in sentences:
-            if sent in top_sentences_list:
-                final_summary_sentences.append(sent)
+        final_summary_list = [target_sentences[i] for i in top_indices]
 
-        return {"summary": " ".join(final_summary_sentences)}
+        return {"summary": " ".join(final_summary_list)}
 
     except Exception as e:
-        print(f"Summarization Error: {e}")
+        # Debugging error handling
+        print(f"Summarization Error in summarizer.py: {e}")
         import traceback
         traceback.print_exc()
-        return {"summary": text[:500] + "..."}
+        # Fallback: Return a simple snippet if the algorithm fails
+        return {"summary": text[:300] + "..."}

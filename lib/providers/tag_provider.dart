@@ -199,4 +199,19 @@ class TagProvider with ChangeNotifier {
   int getTopicFileCount(int topicNumber) {
     return _tagMapping?.getTopicFileCount(topicNumber) ?? 0;
   }
+
+  Future<void> removeFileFromTags(String filePath) async {
+    if (_tagMapping != null) {
+      final topics = _tagMapping!.fileToTopics.remove(filePath);
+
+      if (topics != null) {
+        for (var topicId in topics) {
+          _tagMapping!.topicToFiles[topicId]?.remove(filePath);
+        }
+      }
+
+      await _saveTagMapping();
+      notifyListeners();
+    }
+  }
 }

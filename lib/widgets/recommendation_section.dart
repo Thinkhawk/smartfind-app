@@ -52,7 +52,7 @@ class RecommendationSection extends StatelessWidget {
                 itemCount: recommendedDocs.length,
                 itemBuilder: (context, index) {
                   return SizedBox(
-                    width: 300,
+                    width: 350,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 12),
                       child: DocumentCard(document: recommendedDocs[index]),

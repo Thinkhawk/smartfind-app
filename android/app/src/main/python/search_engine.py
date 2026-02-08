@@ -120,3 +120,31 @@ def get_similar_files(app_files_dir, file_path):
     except Exception as e:
         print(f"Similarity Error: {e}")
         return {"results": []}
+
+def remove_from_index(app_files_dir, file_path):
+    """
+    Removes a specific file entry from the semantic search index.
+    """
+    try:
+        index_path = os.path.join(app_files_dir, "search_index.json")
+        if not os.path.exists(index_path):
+            return {"status": "error", "message": "Index not found"}
+
+        with open(index_path, "r") as f:
+            index_data = json.load(f)
+
+        # Create a new list excluding the deleted file path
+        initial_count = len(index_data)
+        index_data = [item for item in index_data if item['path'] != file_path]
+
+        # Only write if a change was actually made
+        if len(index_data) < initial_count:
+            with open(index_path, "w") as f:
+                json.dump(index_data, f)
+            print(f"DEBUG: Successfully removed {file_path} from index.")
+            return {"status": "success", "count": len(index_data)}
+
+        return {"status": "no_change"}
+    except Exception as e:
+        print(f"DEBUG: Error removing from index: {e}")
+        return {"status": "error", "message": str(e)}

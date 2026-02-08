@@ -56,6 +56,28 @@ class MainActivity : FlutterActivity() {
 
                         // Recommendation (Content-Based / P8)
                         "getSimilarFiles" -> handleGetSimilarFiles(call.arguments as Map<*, *>, result)
+                        "removeFromIndex" -> {
+                            // 1. Get the file path from Flutter arguments
+                            val filePathToRemove = call.argument<String>("file_path")
+                            val appFilesDir = context.filesDir.absolutePath
+
+                            // 2. Access the Python module
+                            val py = com.chaquo.python.Python.getInstance()
+                            val searchModule = py.getModule("search_engine")
+
+                            // 3. Call the Python function (renamed local variable to 'pyResponse' to avoid shadowing)
+                            val pyResponse = searchModule.callAttr("remove_from_index", appFilesDir, filePathToRemove).asMap()
+
+                            // 4. Debugging logs
+                            pyResponse?.let {
+                                it.forEach { (k, v) ->
+                                    Log.d("DEBUG", "Python result - $k: $v")
+                                }
+                            }
+
+                            // 5. Return the result back to Flutter using the correct variable name 'result'
+                            result.success(pyResponse)
+                        }
                         else -> result.notImplemented()
                     }
                 } catch (e: Exception) {

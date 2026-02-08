@@ -153,4 +153,9 @@ class FileProvider with ChangeNotifier {
     _ocrService.dispose();
     super.dispose();
   }
+
+  void removeFileFromList(String path) {
+    _documents.removeWhere((doc) => doc.path == path);
+    notifyListeners();
+  }
 }
