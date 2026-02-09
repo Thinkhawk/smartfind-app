@@ -49,5 +49,15 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>SmartFind needs access to your documents to organize and search them.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>SmartFind needs access to photos for text recognition.</string>
 </dict>
 </plist>
