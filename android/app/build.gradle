@@ -32,22 +32,23 @@ android {
 
         python {
             version "3.10"
-            buildPython '/usr/bin/python3'
+            buildPython '/opt/homebrew/bin/python3.10'
 
             pip {
                 // Network and File Utilities
-                install 'requests'
-                install 'chardet'
-                install 'jsonlines'
+                install 'requests==2.32.3'
+                install 'chardet==5.2.0'
+                install 'jsonlines==4.0.0'
 
                 // Document Readers
-                install 'python-docx'
-                install 'pypdf' // Updated from PyPDF2 (deprecated)
+                install 'python-docx==1.1.2'
+                install 'pypdf==4.3.1'
 
-                // ML / Vector Processing (Lightweight Inference)
-                install 'numpy'
-                install 'scipy'
-                install 'gensim'
+                // ML / Vector Processing
+                // Pinning numpy < 2.0 is critical for gensim/scipy compatibility
+                install 'numpy==1.23.3'
+                install 'scipy==1.8.1'
+                install 'gensim==4.4.0'
                 install 'networkx==3.1'
             }
         }
